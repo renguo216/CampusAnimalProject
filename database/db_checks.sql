@@ -1,0 +1,32 @@
+DESCRIBE t_user;
+SELECT * FROM t_user;
+
+DESCRIBE t_animal;
+SELECT * FROM t_animal;
+
+ALTER TABLE t_reimbursement 
+MODIFY COLUMN amount DECIMAL(10,2) NOT NULL 
+COMMENT '申请报销金额';
+
+ALTER TABLE t_donation 
+MODIFY COLUMN amount DECIMAL(10,2) NOT NULL 
+COMMENT '捐赠金额';
+
+ALTER TABLE t_donation 
+MODIFY COLUMN target_pet_id VARCHAR(50) NULL 
+COMMENT '目标宠物ID';
+
+SELECT 
+    TABLE_NAME, 
+    COLUMN_NAME, 
+    DATA_TYPE, 
+    CHARACTER_MAXIMUM_LENGTH, 
+    NUMERIC_PRECISION, 
+    NUMERIC_SCALE,
+    IS_NULLABLE
+FROM information_schema.COLUMNS 
+WHERE TABLE_SCHEMA = 'campus_animal'
+ORDER BY TABLE_NAME, ORDINAL_POSITION;
+
+DELETE FROM t_user WHERE user_id = 'test_001';
+DELETE FROM t_user WHERE user_id = 'test_001';
