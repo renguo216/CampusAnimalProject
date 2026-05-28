@@ -168,6 +168,86 @@ class DatabaseManager:
         except Exception as e:
             print(f"查询失败: {e}")
             return None
+        
+    def insert_many(self, table_name, data_list):
+        """
+        批量向指定表中插入多条记录
+        :param table_name: 表名
+        :param data_list: 包含多个字典的列表，每个字典代表一行数据
+        :return: 成功返回 True，失败返回 False
+        """
+        if not self.connection:
+            print("请先调用 open_database() 建立连接")
+            return False
+        if not data_list:
+            return False
+        try:
+            # 获取第一个字典的键作为列名
+            columns = ', '.join(data_list[0].keys())
+            placeholders = ', '.join(['%s'] * len(data_list[0]))
+            sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+            
+            # 将数据转换为列表的列表
+            values = [list(item.values()) for item in data_list]
+            
+            with self.connection.cursor() as cursor:
+                cursor.executemany(sql, values)
+                self.connection.commit()
+            print(f"成功批量插入 {len(data_list)} 条记录到 {table_name}")
+            return True
+        except Exception as e:
+            print(f"批量插入失败: {e}")
+            return False
+        
+    def get_paginated(self, table_name, page=1, page_size=20, where_clause=None, params=None, order_by=None):
+        """
+        分页查询通用方法
+        :param table_name: 表名
+        :param page: 页码，从1开始
+        :param page_size: 每页记录数
+        :param where_clause: WHERE 子句（不包含 WHERE 关键字），例如 "status = %s"
+        :param params: WHERE 子句的参数，例如 (0,)
+        :param order_by: 排序字段，例如 "created_at DESC"
+        :return: 包含记录列表和总记录数的字典
+        """
+        if not self.connection:
+            print("请先调用 open_database() 建立连接")
+            return None
+        
+        offset = (page - 1) * page_size
+        sql_count = f"SELECT COUNT(*) as total FROM {table_name}"
+        sql_data = f"SELECT * FROM {table_name}"
+        
+        if where_clause:
+            sql_count += f" WHERE {where_clause}"
+            sql_data += f" WHERE {where_clause}"
+        
+        if order_by:
+            sql_data += f" ORDER BY {order_by}"
+        
+        sql_data += f" LIMIT {page_size} OFFSET {offset}"
+        
+        try:
+            with self.connection.cursor() as cursor:
+                # 查询总记录数
+                cursor.execute(sql_count, params)
+                total = cursor.fetchone()['total']
+                
+                # 查询当前页数据
+                cursor.execute(sql_data, params)
+                results = cursor.fetchall()
+                
+            self.connection.commit()
+            return {
+                'data': results,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total + page_size - 1) // page_size
+            }
+        except Exception as e:
+            print(f"分页查询失败: {e}")
+            return None
 
     def execute_raw_sql(self, sql, params=None):
         """
