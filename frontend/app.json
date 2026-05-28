@@ -1,0 +1,19 @@
+{
+  "pages": [
+    "pages/login/login", 
+    "pages/home/home",
+    "pages/adoption/adoption",
+    "pages/community/community",
+    "pages/profile/profile",
+    "pages/guiding/guiding",
+    "pages/profile/edit_profile",
+    "pages/community/post_editor"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

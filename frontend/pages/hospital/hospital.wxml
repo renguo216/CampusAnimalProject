@@ -1,0 +1,48 @@
+<view class="hospital-container">
+  <view class="header">
+    <text class="header-title">附近医院</text>
+  </view>
+
+  <view class="map-area">
+    <view class="map-placeholder">
+      <text class="map-icon">🗺️</text>
+      <text class="map-text">地图加载中...</text>
+    </view>
+    <view class="location-badge">📍 西科大附近</view>
+  </view>
+
+  <view class="hospital-list">
+    <view class="hospital-card" wx:for="{{hospitals}}" wx:key="id" bindtap="viewHospital" data-id="{{item.id}}">
+      <view class="hospital-info">
+        <text class="hospital-name">{{item.name}}</text>
+        <text class="hospital-address">{{item.address}}</text>
+        <view class="hospital-tags">
+          <text class="tag" wx:for="{{item.tags}}" wx:key="index">{{item}}</text>
+        </view>
+        <view class="hospital-footer">
+          <text class="distance">{{item.distance}}</text>
+          <text class="phone" bindtap="callHospital" data-phone="{{item.phone}}">📞 联系</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tab-bar">
+    <view class="tab-bar-item" bindtap="goHome">
+      <text class="tab-bar-icon">🏠</text>
+      <text class="tab-bar-text">首页</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goAdoption">
+      <text class="tab-bar-icon">❤️</text>
+      <text class="tab-bar-text">领养</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goCommunity">
+      <text class="tab-bar-icon">💬</text>
+      <text class="tab-bar-text">社区</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goProfile">
+      <text class="tab-bar-icon">👤</text>
+      <text class="tab-bar-text">我的</text>
+    </view>
+  </view>
+</view>

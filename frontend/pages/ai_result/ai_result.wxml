@@ -1,0 +1,86 @@
+<view class="ai-container">
+  <view class="header">
+    <view class="back-btn" bindtap="goBack">
+      <text>←</text>
+    </view>
+    <text class="header-title">AI识物种</text>
+    <view class="placeholder"></view>
+  </view>
+
+  <view class="result-card">
+    <view class="image-container">
+      <image class="result-image" src="{{result.image}}" mode="aspectFill" />
+      <view class="success-badge">识别成功</view>
+    </view>
+    
+    <view class="result-info">
+      <text class="breed-name">{{result.breed}}</text>
+      <text class="breed-english">{{result.englishName}}</text>
+      <view class="paw-icon">🐾</view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">— 性格特征</text>
+    </view>
+    <view class="character-desc">
+      <text>{{result.character}}</text>
+    </view>
+    
+    <view class="stats-row">
+      <view class="stat-item">
+        <text class="stat-icon">🧠</text>
+        <text class="stat-label">智力等级</text>
+        <text class="stat-value">{{result.intelligence}}</text>
+      </view>
+      <view class="stat-item">
+        <text class="stat-icon">⏱️</text>
+        <text class="stat-label">平均寿命</text>
+        <text class="stat-value">{{result.lifespan}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">— 照顾建议</text>
+    </view>
+    <view class="tips-list">
+      <view class="tip-item" wx:for="{{result.tips}}" wx:key="index">
+        <text class="tip-icon">✓</text>
+        <text class="tip-text">{{item}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="action-buttons">
+    <button class="action-btn primary" bindtap="goHome">
+      <text class="btn-icon">🏠</text>
+      <text>返回首页</text>
+    </button>
+    <button class="action-btn secondary" bindtap="shareResult">
+      <text class="btn-icon">📤</text>
+      <text>分享识别结果</text>
+    </button>
+  </view>
+
+  <view class="tab-bar">
+    <view class="tab-bar-item" bindtap="goHome">
+      <text class="tab-bar-icon">🏠</text>
+      <text class="tab-bar-text">首页</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goAdoption">
+      <text class="tab-bar-icon">❤️</text>
+      <text class="tab-bar-text">领养</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goCommunity">
+      <text class="tab-bar-icon">💬</text>
+      <text class="tab-bar-text">社区</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goProfile">
+      <text class="tab-bar-icon">👤</text>
+      <text class="tab-bar-text">我的</text>
+    </view>
+  </view>
+</view>

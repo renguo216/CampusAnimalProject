@@ -1,0 +1,21 @@
+<view class="login-container">
+  
+  <view class="logo-box">
+    <view class="logo-placeholder">
+      <image class="circle-img-fill" mode="aspectFill" src="/pages/login/images/image1.jpg"></image>
+    </view>
+    <text class="title">欢迎来到流浪动物智慧互助平台</text>
+  </view>
+  
+  <view class="form-box">
+    <checkbox-group class="agreement-box" bindchange="handleAgreementChange">
+      <label class="checkbox-label">
+        <checkbox value="agree" checked="{{isAgreed}}" />
+        <text class="agreement-text">我已阅读并同意《用户协议》及《志愿者公约》</text>
+      </label>
+    </checkbox-group>
+    
+    <button class="wechat-quick-btn" bindtap="handleWeChatLogin">微信快捷登录</button>
+  </view>
+
+</view>

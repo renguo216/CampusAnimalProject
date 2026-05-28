@@ -1,0 +1,86 @@
+<view class="report-container">
+  <view class="header">
+    <view class="back-btn" bindtap="goBack">
+      <text>←</text>
+    </view>
+    <text class="header-title">发布求助</text>
+    <view class="placeholder"></view>
+  </view>
+
+  <view class="banner">
+    <text class="banner-title">传递温暖</text>
+    <text class="banner-desc">每一份救助信息的发布，都是流浪生命的一线生机。请尽可能详细地描述动物的情况。</text>
+    <view class="paw-print">🐾</view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">上传照片</text>
+    <view class="upload-area">
+      <view class="upload-item add-btn" bindtap="chooseImage" wx:if="{{images.length < 3}}">
+        <text class="add-icon">📷</text>
+        <text class="add-text">添加</text>
+      </view>
+      <view class="upload-item" wx:for="{{images}}" wx:key="index">
+        <image src="{{item}}" mode="aspectFill" />
+        <view class="delete-btn" bindtap="deleteImage" data-index="{{index}}">×</view>
+      </view>
+    </view>
+    <view class="ai-identify-btn" bindtap="aiIdentifyAnimal" wx:if="{{images.length > 0 && !identifyResult}}">
+      <text>🔍 AI识别动物</text>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{identifyResult}}">
+    <text class="section-title">识别结果</text>
+    <view class="identify-result">
+      <view class="result-row">
+        <text class="result-label">物种：</text>
+        <text class="result-value">{{identifyResult.breed}}</text>
+      </view>
+      <view class="result-row">
+        <text class="result-label">特征：</text>
+        <text class="result-value">{{identifyResult.character}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">描述动物情况</text>
+    <textarea class="desc-input" placeholder="例如：在三教楼下发现一只橘色小猫，看起来腿部受伤，精神状态不佳..." bindinput="onDescInput" />
+  </view>
+
+  <view class="section">
+    <text class="section-title">发现地点</text>
+    <view class="location-input" bindtap="chooseLocation">
+      <text class="location-icon">📍</text>
+      <text class="location-text">{{location || '点击标记或手动输入地点'}}</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">需获得的帮助</text>
+    <view class="help-options">
+      <view class="help-item {{selectedHelp.includes('food') ? 'active' : ''}}" bindtap="toggleHelp" data-type="food">
+        <text>🍖 食物</text>
+      </view>
+      <view class="help-item {{selectedHelp.includes('medical') ? 'active' : ''}}" bindtap="toggleHelp" data-type="medical">
+        <text>🏥 医疗</text>
+      </view>
+      <view class="help-item {{selectedHelp.includes('shelter') ? 'active' : ''}}" bindtap="toggleHelp" data-type="shelter">
+        <text>🏠 收容</text>
+      </view>
+      <view class="help-item {{selectedHelp.includes('adoption') ? 'active' : ''}}" bindtap="toggleHelp" data-type="adoption">
+        <text>❤️ 领养</text>
+      </view>
+    </view>
+  </view>
+
+  <button class="submit-btn" bindtap="submitReport">发布求助</button>
+
+  <view class="footer-text">
+    <text>点击发布即表示您已阅读并同意《救助发布规范》</text>
+  </view>
+  <view class="footer-text">
+    <text>诚实守信，让每一份爱心都能落到实处</text>
+  </view>
+</view>

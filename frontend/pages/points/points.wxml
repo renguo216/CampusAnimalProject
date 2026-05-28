@@ -1,0 +1,63 @@
+<view class="points-container">
+  <view class="header">
+    <view class="back-btn" bindtap="goBack">
+      <text>←</text>
+    </view>
+    <text class="header-title">积分商城</text>
+    <view class="placeholder"></view>
+  </view>
+
+  <view class="points-card">
+    <view class="points-info">
+      <text class="points-label">我的积分</text>
+      <text class="points-value">{{myPoints}}</text>
+    </view>
+    <view class="points-history-btn" bindtap="goToExchangeRecords">
+      <text>兑换记录</text>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <view class="tab-item {{activeTab === 'products' ? 'active' : ''}}" bindtap="switchTab" data-tab="products">
+      <text>可兑换</text>
+    </view>
+    <view class="tab-item {{activeTab === 'records' ? 'active' : ''}}" bindtap="switchTab" data-tab="records">
+      <text>兑换记录</text>
+    </view>
+  </view>
+
+  <view class="products-list" wx:if="{{activeTab === 'products'}}">
+    <view class="product-item" wx:for="{{products}}" wx:key="id">
+      <image class="product-image" src="{{item.image}}" mode="aspectFill" />
+      <view class="product-info">
+        <text class="product-name">{{item.name}}</text>
+        <text class="product-desc">{{item.description}}</text>
+        <view class="product-bottom">
+          <view class="product-points">
+            <text class="points-icon">⭐</text>
+            <text class="points-num">{{item.points}}积分</text>
+          </view>
+          <button class="exchange-btn {{myPoints >= item.points ? '' : 'disabled'}}" bindtap="exchangeProduct" data-id="{{item.id}}" data-points="{{item.points}}" disabled="{{myPoints < item.points}}">
+            {{myPoints >= item.points ? '兑换' : '积分不足'}}
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="records-list" wx:if="{{activeTab === 'records'}}">
+    <view class="record-item" wx:for="{{exchangeRecords}}" wx:key="id">
+      <view class="record-info">
+        <text class="record-name">{{item.productName}}</text>
+        <text class="record-time">{{item.exchangeTime}}</text>
+      </view>
+      <view class="record-points">
+        <text>-{{item.points}}积分</text>
+        <text class="record-status {{item.status}}">{{item.statusText}}</text>
+      </view>
+    </view>
+    <view class="empty-tip" wx:if="{{exchangeRecords.length === 0}}">
+      <text>暂无兑换记录</text>
+    </view>
+  </view>
+</view>

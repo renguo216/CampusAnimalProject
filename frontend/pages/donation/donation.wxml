@@ -1,0 +1,71 @@
+<view class="donation-container">
+  <view class="header">
+    <text class="header-title">我要募捐</text>
+  </view>
+
+  <view class="banner">
+    <text class="banner-title">爱心募捐</text>
+    <text class="banner-desc">每一份善款都将用于流浪动物的救助与护理</text>
+    <view class="total-info">
+      <text class="total-label">累计捐款</text>
+      <text class="total-amount">¥ 12,860.00</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">捐款项目</text>
+    <view class="project-list">
+      <view class="project-card" wx:for="{{projects}}" wx:key="id" bindtap="selectProject" data-id="{{item.id}}">
+        <view class="project-icon">{{item.icon}}</view>
+        <view class="project-info">
+          <text class="project-name">{{item.name}}</text>
+          <text class="project-desc">{{item.description}}</text>
+        </view>
+        <view class="project-progress">
+          <view class="progress-bar">
+            <view class="progress-fill" style="width: {{item.progress}}%"></view>
+          </view>
+          <text class="progress-text">{{item.progress}}%</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">捐款金额</text>
+    <view class="amount-options">
+      <view class="amount-btn" wx:for="{{amounts}}" wx:key="value" bindtap="selectAmount" data-value="{{item.value}}">
+        <text>¥{{item.value}}</text>
+      </view>
+    </view>
+    <view class="custom-amount">
+      <input class="amount-input" type="digit" placeholder="自定义金额" bindinput="onAmountInput" />
+    </view>
+  </view>
+
+  <view class="section">
+    <text class="section-title">留言（选填）</text>
+    <textarea class="message-input" placeholder="想说点什么..." bindinput="onMessageInput" />
+  </view>
+
+  <button class="donate-btn" bindtap="submitDonation">确认捐款</button>
+
+  <view class="tab-bar">
+    <view class="tab-bar-item" bindtap="goHome">
+      <text class="tab-bar-icon">🏠</text>
+      <text class="tab-bar-text">首页</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goAdoption">
+      <text class="tab-bar-icon">❤️</text>
+      <text class="tab-bar-text">领养</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goCommunity">
+      <text class="tab-bar-icon">💬</text>
+      <text class="tab-bar-text">社区</text>
+    </view>
+    <view class="tab-bar-item" bindtap="goProfile">
+      <text class="tab-bar-icon">👤</text>
+      <text class="tab-bar-text">我的</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,96 @@
+<view class="home-container">
+  <view class="header">
+    <view class="location">
+      <text class="location-icon">📍</text>
+      <text class="location-text">西科大</text>
+    </view>
+    <view class="search-box">
+      <text class="search-icon">🔍</text>
+      <input class="search-input" placeholder="请输入关键字搜索" placeholder-class="search-placeholder" />
+    </view>
+  </view>
+
+  <view class="banner">
+    <view class="banner-content">
+      <view class="banner-text">
+        <text class="banner-title">西科大</text>
+        <text class="banner-title">流浪动物</text>
+        <text class="banner-title">智慧互助平台</text>
+      </view>
+      <view class="banner-avatar">
+        <image class="avatar-img" src="https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20cartoon%20mascot%20pet%20logo&image_size=square" mode="aspectFill" />
+      </view>
+    </view>
+  </view>
+
+  <view class="quick-actions">
+    <view class="action-item" bindtap="handleReport">
+      <view class="action-icon pink">💝</view>
+      <text class="action-text">发布救助</text>
+    </view>
+    <view class="action-item" bindtap="handleAIIdentify">
+      <view class="action-icon blue">📷</view>
+      <text class="action-text">AI识物种</text>
+    </view>
+    <view class="action-item" bindtap="handleNearbyHospital">
+      <view class="action-icon green">🏥</view>
+      <text class="action-text">附近医院</text>
+    </view>
+    <view class="action-item" bindtap="handleDonation">
+      <view class="action-icon orange">🎁</view>
+      <text class="action-text">我要募捐</text>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <view class="tab-item {{currentTab === 'pending' ? 'active' : ''}}" bindtap="switchTab" data-tab="pending">
+      <text>待救助</text>
+      <view class="tab-indicator" wx:if="{{currentTab === 'pending'}}"></view>
+    </view>
+    <view class="tab-item {{currentTab === 'processing' ? 'active' : ''}}" bindtap="switchTab" data-tab="processing">
+      <text>救助中</text>
+      <view class="tab-indicator" wx:if="{{currentTab === 'processing'}}"></view>
+    </view>
+    <view class="tab-item {{currentTab === 'resolved' ? 'active' : ''}}" bindtap="switchTab" data-tab="resolved">
+      <text>已救助</text>
+      <view class="tab-indicator" wx:if="{{currentTab === 'resolved'}}"></view>
+    </view>
+  </view>
+
+  <scroll-view class="rescue-list" scroll-y>
+    <view class="rescue-card" wx:for="{{rescueList}}" wx:key="id" bindtap="viewRescueDetail" data-id="{{item.id}}">
+      <image class="rescue-image" src="{{item.image}}" mode="aspectFill" />
+      <view class="rescue-info">
+        <text class="rescue-title">{{item.title}}</text>
+        <text class="rescue-specie">物种: {{item.specie}}</text>
+        <text class="rescue-needs">需要: {{item.needs}}</text>
+        <view class="rescue-location">
+          <text class="location-icon-small">📍</text>
+          <text class="location-text-small">{{item.location}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="list-footer">
+      <text>已经到底了~</text>
+    </view>
+  </scroll-view>
+
+  <view class="tab-bar">
+    <view class="tab-bar-item active" bindtap="navigateToHome">
+      <text class="tab-bar-icon">🏠</text>
+      <text class="tab-bar-text">首页</text>
+    </view>
+    <view class="tab-bar-item" bindtap="navigateToAdoption">
+      <text class="tab-bar-icon">❤️</text>
+      <text class="tab-bar-text">领养</text>
+    </view>
+    <view class="tab-bar-item" bindtap="navigateToCommunity">
+      <text class="tab-bar-icon">💬</text>
+      <text class="tab-bar-text">社区</text>
+    </view>
+    <view class="tab-bar-item" bindtap="navigateToProfile">
+      <text class="tab-bar-icon">👤</text>
+      <text class="tab-bar-text">我的</text>
+    </view>
+  </view>
+</view>

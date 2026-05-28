@@ -1,0 +1,179 @@
+page {
+  background-color: #fdf8f3;
+  min-height: 100vh;
+}
+
+.apply-container {
+  padding-bottom: 60rpx;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 60rpx 30rpx 30rpx;
+  background-color: #ffffff;
+}
+
+.back-btn {
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 40rpx;
+  color: #333333;
+}
+
+.header-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #333333;
+}
+
+.placeholder {
+  width: 60rpx;
+}
+
+.intro-section {
+  text-align: center;
+  padding: 50rpx 30rpx;
+  background: linear-gradient(135deg, #fff3e6 0%, #ffe4c4 100%);
+}
+
+.intro-icon {
+  font-size: 80rpx;
+  margin-bottom: 20rpx;
+}
+
+.intro-title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #8b4513;
+  margin-bottom: 15rpx;
+}
+
+.intro-desc {
+  display: block;
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.6;
+}
+
+.form-section {
+  background-color: #ffffff;
+  margin: 30rpx;
+  border-radius: 20rpx;
+  padding: 30rpx;
+}
+
+.form-item {
+  margin-bottom: 35rpx;
+}
+
+.form-item:last-child {
+  margin-bottom: 0;
+}
+
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 15rpx;
+}
+
+.form-input {
+  width: 100%;
+  height: 90rpx;
+  background-color: #fdf8f3;
+  border-radius: 15rpx;
+  padding: 0 25rpx;
+  font-size: 28rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+.form-textarea {
+  width: 100%;
+  height: 200rpx;
+  background-color: #fdf8f3;
+  border-radius: 15rpx;
+  padding: 25rpx;
+  font-size: 28rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15rpx;
+}
+
+.checkbox-item {
+  padding: 18rpx 30rpx;
+  background-color: #f5f5f5;
+  border-radius: 50rpx;
+  font-size: 26rpx;
+  color: #666666;
+}
+
+.checkbox-item.checked {
+  background-color: #ff9f00;
+  color: #ffffff;
+}
+
+.time-options {
+  display: flex;
+  gap: 20rpx;
+}
+
+.time-item {
+  flex: 1;
+  padding: 20rpx;
+  background-color: #f5f5f5;
+  border-radius: 15rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #666666;
+}
+
+.time-item.checked {
+  background-color: #52c41a;
+  color: #ffffff;
+}
+
+.agreement-section {
+  margin: 30rpx;
+}
+
+.agreement-label {
+  display: flex;
+  align-items: center;
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.submit-btn {
+  margin: 40rpx 30rpx;
+  height: 100rpx;
+  background: linear-gradient(90deg, #d46b08 0%, #ff9f00 100%);
+  color: #ffffff;
+  border-radius: 50rpx;
+  font-size: 32rpx;
+  font-weight: bold;
+  border: none;
+  box-shadow: 0 8rpx 20rpx rgba(212, 107, 8, 0.3);
+}
+
+.contact-section {
+  text-align: center;
+  margin-top: 30rpx;
+}
+
+.contact-text {
+  font-size: 24rpx;
+  color: #999999;
+}

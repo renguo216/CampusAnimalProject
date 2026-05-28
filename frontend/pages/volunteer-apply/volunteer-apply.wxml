@@ -1,0 +1,90 @@
+<view class="apply-container">
+  <view class="header">
+    <view class="back-btn" bindtap="goBack">
+      <text>←</text>
+    </view>
+    <text class="header-title">志愿者申请</text>
+    <view class="placeholder"></view>
+  </view>
+
+  <view class="intro-section">
+    <view class="intro-icon">🎖️</view>
+    <text class="intro-title">成为爱心志愿者</text>
+    <text class="intro-desc">用您的爱心和专业技能，帮助校园流浪动物找到一个温暖的家。</text>
+  </view>
+
+  <view class="form-section">
+    <view class="form-item">
+      <text class="form-label">姓名</text>
+      <input class="form-input" placeholder="请输入真实姓名" bindinput="onNameInput" value="{{name}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">学号</text>
+      <input class="form-input" placeholder="请输入学号" bindinput="onStudentIdInput" value="{{studentId}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">手机号</text>
+      <input class="form-input" type="number" placeholder="请输入手机号" bindinput="onPhoneInput" value="{{phone}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">专业</text>
+      <input class="form-input" placeholder="请输入专业" bindinput="onMajorInput" value="{{major}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">志愿服务类型</text>
+      <view class="checkbox-group">
+        <view class="checkbox-item {{serviceTypes.includes('rescue') ? 'checked' : ''}}" bindtap="toggleServiceType" data-type="rescue">
+          <text>🐾 动物救助</text>
+        </view>
+        <view class="checkbox-item {{serviceTypes.includes('medical') ? 'checked' : ''}}" bindtap="toggleServiceType" data-type="medical">
+          <text>🏥 医疗协助</text>
+        </view>
+        <view class="checkbox-item {{serviceTypes.includes('adoption') ? 'checked' : ''}}" bindtap="toggleServiceType" data-type="adoption">
+          <text>🏠 领养匹配</text>
+        </view>
+        <view class="checkbox-item {{serviceTypes.includes('promotion') ? 'checked' : ''}}" bindtap="toggleServiceType" data-type="promotion">
+          <text>📢 宣传推广</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">个人简介</text>
+      <textarea class="form-textarea" placeholder="请简单介绍一下自己，以及为什么想成为志愿者..." bindinput="onIntroInput" value="{{intro}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">志愿服务时间</text>
+      <view class="time-options">
+        <view class="time-item {{availableTime.includes('weekday') ? 'checked' : ''}}" bindtap="toggleTime" data-time="weekday">
+          <text>工作日</text>
+        </view>
+        <view class="time-item {{availableTime.includes('weekend') ? 'checked' : ''}}" bindtap="toggleTime" data-time="weekend">
+          <text>周末</text>
+        </view>
+        <view class="time-item {{availableTime.includes('anytime') ? 'checked' : ''}}" bindtap="toggleTime" data-time="anytime">
+          <text>随时</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="agreement-section">
+    <checkbox-group bindchange="onAgreementChange">
+      <label class="agreement-label">
+        <checkbox value="agreed" checked="{{isAgreed}}" />
+        <text>我已阅读并同意《志愿者服务协议》和《隐私政策》</text>
+      </label>
+    </checkbox-group>
+  </view>
+
+  <button class="submit-btn" bindtap="submitApplication">提交申请</button>
+
+  <view class="contact-section">
+    <text class="contact-text">如有疑问，请联系：volunteer@campus-pets.com</text>
+  </view>
+</view>
