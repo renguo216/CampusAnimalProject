@@ -1,65 +1,86 @@
 from backend.utils.db_manager import DatabaseManager
+from backend.model.user import User
+import uuid
 
 class UserLibrary:
-    """
-    UserLibrary 操作类
-    对应文档：3.5.2 数据操作类设计 - (1) 针对 User 类
-    主要支持 T-User 表的特有业务逻辑。
-    """
-
     def __init__(self):
         self.db = DatabaseManager()
 
-    def verify_user_validity(self, user_id):
-        """
-        验证用户输入的账号与密码是否合法（对应文档接口）
-        注意：由于本系统使用微信 OpenID 作为 user_id，无需传统密码验证。
-        此方法实现为检查用户是否存在于数据库中。
-        """
-        if not self.db.open_database():
-            return False
-        user = self.db.get_by_id('t_user', 'user_id', user_id)
-        self.db.close_database()
-        return user is not None
-
+    # === 基础核心操作 ===
     def get_user_by_account(self, user_id):
-        """
-        根据账号精确查询用户信息（对应文档接口）
-        """
+        """根据账号精确查询用户信息，返回 User 对象"""
         if not self.db.open_database():
             return None
-        user = self.db.get_by_id('t_user', 'user_id', user_id)
+        user_data = self.db.get_by_id('t_user', 'user_id', user_id)
         self.db.close_database()
-        return user
+        if user_data:
+            return User(**user_data)
+        return None
 
-    def register_user(self, user_id, nickname, role=1):
-        """
-        注册新用户（已修复：避免重复关闭数据库连接）
-        """
-        # 1. 先检查用户是否存在（这会自动打开并关闭连接）
+    def verify_user_validity(self, user_id):
+        """验证用户是否存在（检查账号是否在数据库里）"""
+        return self.get_user_by_account(user_id) is not None
+
+    def register_user(self, user_id, nickname, avatar_url=None, role=0):
         if self.get_user_by_account(user_id):
-            print(f"用户 {user_id} 已存在")
-            return False  # 直接返回，不要再尝试关闭连接！
-
-        # 2. 如果用户不存在，重新打开连接插入数据
-        if not self.db.open_database():
             return False
         data = {
             'user_id': user_id,
             'nickname': nickname,
-            'role': role
+            'avatarURL': avatar_url,
+            'role': role,
+            'points': 0,
+            'identityNo': uuid.uuid4().hex[:12],  # ✅ 单独生成短ID
+            'level': 1
         }
+        if not self.db.open_database():
+            return False
         success = self.db.insert('t_user', data)
-        self.db.close_database()  # 只有在这里才需要关闭连接
+        self.db.close_database()
         return success
 
     def update_user_info(self, user_id, update_data):
-        """
-        更新用户信息（补充方法）
-        :param update_data: 要更新的字段字典，例如 {'nickname': '新昵称', 'avatarURL': '新头像'}
-        """
+        """通用更新用户信息方法（增加存在性检查）"""
+        # 先检查用户是否存在
+        if not self.get_user_by_account(user_id):
+            return False  # 用户不存在，返回失败
         if not self.db.open_database():
             return False
         success = self.db.update('t_user', 'user_id', user_id, update_data)
         self.db.close_database()
         return success
+
+    # === 专用辅助方法 ===
+    def update_role(self, user_id, new_role):
+        """专门修改用户角色（用于从游客升级为志愿者）"""
+        return self.update_user_info(user_id, {'role': new_role})
+
+    def increment_points(self, user_id, points):
+        """增加用户积分（由其他模块调用，如完成救助加10分）"""
+        user = self.get_user_by_account(user_id)
+        if not user:
+            return False
+        new_points = user.points + points
+        return self.update_user_info(user_id, {'points': new_points})
+
+    def add_points(self, user_id, delta):
+        """在原有积分基础上增加指定分数（delta可为负数）"""
+        user = self.get_user_by_account(user_id)
+        if not user:
+            return False
+        new_points = user.points + delta
+        return self.update_user_info(user_id, {'points': new_points})
+
+    def get_volunteers_ranking(self, limit=10):
+        """获取积分最高的前N名志愿者（用于排行榜）"""
+        if not self.db.open_database():
+            return []
+        sql = """
+            SELECT * FROM t_user 
+            WHERE role = 2 
+            ORDER BY points DESC 
+            LIMIT %s
+        """
+        results = self.db.execute_raw_sql(sql, (limit,))
+        self.db.close_database()
+        return [User(**row) for row in results] if results else []
