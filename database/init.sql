@@ -25,12 +25,18 @@ DROP TABLE IF EXISTS `t_adoptionapply`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_adoptionapply` (
-  `apply_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请单号，PK',
-  `pet_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '领养宠物ID（指向 t_animal）',
-  `user_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请人ID（指向 t_user）',
-  `status` int NOT NULL DEFAULT '0' COMMENT '领养审核状态，0:审核中, 1:通过, 2:驳回',
-  `content` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '申请理由',
-  PRIMARY KEY (`apply_id`)
+  `apply_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请单号',
+  `pet_id` int NOT NULL COMMENT '领养宠物ID',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请人ID',
+  `status` int DEFAULT '0' COMMENT '状态：0-审核中，1-通过，2-驳回',
+  `content` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '申请理由',
+  `review_comment` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '审核意见',
+  `created_at` datetime DEFAULT NULL COMMENT '申请时间',
+  PRIMARY KEY (`apply_id`),
+  KEY `fk_adoption_pet` (`pet_id`),
+  KEY `fk_adoption_user` (`user_id`),
+  CONSTRAINT `fk_adoption_pet` FOREIGN KEY (`pet_id`) REFERENCES `t_animal` (`pet_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_adoption_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='领养申请表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -51,13 +57,23 @@ DROP TABLE IF EXISTS `t_animal`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_animal` (
-  `pet_id` int NOT NULL AUTO_INCREMENT COMMENT '宠物档案ID（自动递增）',
+  `pet_id` int NOT NULL AUTO_INCREMENT COMMENT '宠物档案ID',
   `name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '宠物名字',
   `breed` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '品种',
-  `vector` text COLLATE utf8mb4_unicode_ci COMMENT '特征向量（用于AI识别比对）',
-  `status` int DEFAULT '0' COMMENT '0-在校, 1-已领养, 2-需医疗',
+  `color` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '毛色',
+  `vector` text COLLATE utf8mb4_unicode_ci COMMENT '特征向量（JSON格式）',
+  `status` int DEFAULT '0' COMMENT '状态：0-在校，1-已领养，2-需医疗',
+  `age` int DEFAULT '0' COMMENT '年龄（单位：月）',
+  `gender` tinyint DEFAULT '0' COMMENT '性别：0-未知，1-弟弟，2-妹妹',
+  `is_neutered` tinyint DEFAULT '0' COMMENT '是否绝育：0-未知，1-是，2-否',
+  `is_vaccinated` tinyint DEFAULT '0' COMMENT '是否疫苗：0-未知，1-是，2-否',
+  `personality` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '性格描述（简短）',
+  `description` text COLLATE utf8mb4_unicode_ci COMMENT '详细描述（故事）',
+  `photo_urls` text COLLATE utf8mb4_unicode_ci COMMENT '照片链接（JSON数组）',
+  `found_location` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发现地点',
+  `created_at` datetime DEFAULT NULL COMMENT '档案创建时间',
   PRIMARY KEY (`pet_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='动物档案表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -70,6 +86,36 @@ LOCK TABLES `t_animal` WRITE;
 UNLOCK TABLES;
 
 --
+-- Table structure for table `t_comment`
+--
+
+DROP TABLE IF EXISTS `t_comment`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_comment` (
+  `comment_id` int NOT NULL AUTO_INCREMENT COMMENT '评论ID',
+  `post_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联帖子ID',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论人ID',
+  `content` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '评论内容',
+  `created_at` datetime DEFAULT NULL COMMENT '评论时间',
+  PRIMARY KEY (`comment_id`),
+  KEY `fk_comment_post` (`post_id`),
+  KEY `fk_comment_user` (`user_id`),
+  CONSTRAINT `fk_comment_post` FOREIGN KEY (`post_id`) REFERENCES `t_post` (`post_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_comment_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='评论表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_comment`
+--
+
+LOCK TABLES `t_comment` WRITE;
+/*!40000 ALTER TABLE `t_comment` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_comment` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `t_donation`
 --
 
@@ -77,11 +123,17 @@ DROP TABLE IF EXISTS `t_donation`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_donation` (
-  `donation_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '捐赠单号，PK',
+  `donation_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '捐赠单号',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '捐款人ID',
+  `project_id` int NOT NULL COMMENT '募捐项目ID',
   `amount` decimal(10,2) NOT NULL COMMENT '捐赠金额',
-  `target_pet_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '目标宠物ID',
-  PRIMARY KEY (`donation_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='捐赠/募捐表';
+  `created_at` datetime DEFAULT NULL COMMENT '捐款时间',
+  PRIMARY KEY (`donation_id`),
+  KEY `fk_donation_user` (`user_id`),
+  KEY `fk_donation_project` (`project_id`),
+  CONSTRAINT `fk_donation_project` FOREIGN KEY (`project_id`) REFERENCES `t_donation_project` (`project_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_donation_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='捐赠记录表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -94,6 +146,156 @@ LOCK TABLES `t_donation` WRITE;
 UNLOCK TABLES;
 
 --
+-- Table structure for table `t_donation_project`
+--
+
+DROP TABLE IF EXISTS `t_donation_project`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_donation_project` (
+  `project_id` int NOT NULL AUTO_INCREMENT COMMENT '项目ID',
+  `title` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '项目标题',
+  `description` text COLLATE utf8mb4_unicode_ci COMMENT '项目描述',
+  `target_amount` decimal(10,2) NOT NULL COMMENT '目标金额',
+  `current_amount` decimal(10,2) DEFAULT '0.00' COMMENT '已筹金额',
+  `participant_count` int DEFAULT '0' COMMENT '参与人数',
+  `status` tinyint DEFAULT '1' COMMENT '状态：0-已结束，1-进行中',
+  `created_at` datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`project_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='募捐项目表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_donation_project`
+--
+
+LOCK TABLES `t_donation_project` WRITE;
+/*!40000 ALTER TABLE `t_donation_project` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_donation_project` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `t_exchange`
+--
+
+DROP TABLE IF EXISTS `t_exchange`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_exchange` (
+  `exchange_id` int NOT NULL AUTO_INCREMENT COMMENT '兑换记录ID',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户ID',
+  `product_id` int NOT NULL COMMENT '兑换商品ID',
+  `points_used` int NOT NULL COMMENT '消耗积分数',
+  `status` int DEFAULT '0' COMMENT '状态：0-待发货，1-已完成，2-已取消',
+  `created_at` datetime DEFAULT NULL COMMENT '兑换时间',
+  PRIMARY KEY (`exchange_id`),
+  KEY `fk_exchange_user` (`user_id`),
+  KEY `fk_exchange_product` (`product_id`),
+  CONSTRAINT `fk_exchange_product` FOREIGN KEY (`product_id`) REFERENCES `t_exchange_product` (`product_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_exchange_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分兑换记录表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_exchange`
+--
+
+LOCK TABLES `t_exchange` WRITE;
+/*!40000 ALTER TABLE `t_exchange` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_exchange` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `t_exchange_product`
+--
+
+DROP TABLE IF EXISTS `t_exchange_product`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_exchange_product` (
+  `product_id` int NOT NULL AUTO_INCREMENT COMMENT '商品ID',
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '商品名称',
+  `description` text COLLATE utf8mb4_unicode_ci COMMENT '商品描述',
+  `points_required` int NOT NULL COMMENT '所需积分',
+  `image_url` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '商品图片',
+  `stock` int DEFAULT '0' COMMENT '库存数量',
+  `status` tinyint DEFAULT '1' COMMENT '状态：0-下架，1-上架',
+  `created_at` datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='积分商品表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_exchange_product`
+--
+
+LOCK TABLES `t_exchange_product` WRITE;
+/*!40000 ALTER TABLE `t_exchange_product` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_exchange_product` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `t_follow`
+--
+
+DROP TABLE IF EXISTS `t_follow`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_follow` (
+  `follow_id` int NOT NULL AUTO_INCREMENT COMMENT '关注记录ID',
+  `from_user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关注者ID',
+  `to_user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '被关注者ID',
+  `created_at` datetime DEFAULT NULL COMMENT '关注时间',
+  PRIMARY KEY (`follow_id`),
+  KEY `fk_follow_from` (`from_user_id`),
+  KEY `fk_follow_to` (`to_user_id`),
+  CONSTRAINT `fk_follow_from` FOREIGN KEY (`from_user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_follow_to` FOREIGN KEY (`to_user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='关注表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_follow`
+--
+
+LOCK TABLES `t_follow` WRITE;
+/*!40000 ALTER TABLE `t_follow` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_follow` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `t_like`
+--
+
+DROP TABLE IF EXISTS `t_like`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_like` (
+  `like_id` int NOT NULL AUTO_INCREMENT COMMENT '点赞记录ID',
+  `post_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '帖子ID（可空）',
+  `comment_id` int DEFAULT NULL COMMENT '评论ID（可空）',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '点赞人ID',
+  `created_at` datetime DEFAULT NULL COMMENT '点赞时间',
+  PRIMARY KEY (`like_id`),
+  KEY `fk_like_post` (`post_id`),
+  KEY `fk_like_comment` (`comment_id`),
+  KEY `fk_like_user` (`user_id`),
+  CONSTRAINT `fk_like_comment` FOREIGN KEY (`comment_id`) REFERENCES `t_comment` (`comment_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_like_post` FOREIGN KEY (`post_id`) REFERENCES `t_post` (`post_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_like_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='点赞表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_like`
+--
+
+LOCK TABLES `t_like` WRITE;
+/*!40000 ALTER TABLE `t_like` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_like` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `t_notice`
 --
 
@@ -101,9 +303,10 @@ DROP TABLE IF EXISTS `t_notice`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_notice` (
-  `notice_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标号，PK',
-  `title` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标题',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '公告内容',
+  `notice_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告编号',
+  `title` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公告标题',
+  `content` text COLLATE utf8mb4_unicode_ci COMMENT '公告内容',
+  `created_at` datetime DEFAULT NULL COMMENT '发布时间',
   PRIMARY KEY (`notice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统公告表';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -125,11 +328,19 @@ DROP TABLE IF EXISTS `t_post`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_post` (
-  `post_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '帖子编号PK',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '帖子内容',
+  `post_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '帖子编号',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '发帖人ID',
+  `content` text COLLATE utf8mb4_unicode_ci COMMENT '帖子内容',
+  `image_urls` text COLLATE utf8mb4_unicode_ci COMMENT '图片链接（JSON数组）',
   `like_count` int DEFAULT '0' COMMENT '点赞数',
-  PRIMARY KEY (`post_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='社区互助贴表';
+  `comment_count` int DEFAULT '0' COMMENT '评论数',
+  `share_count` int DEFAULT '0' COMMENT '转发/分享数',
+  `status` tinyint DEFAULT '1' COMMENT '审核状态：0-待审核，1-已通过，2-驳回',
+  `created_at` datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`post_id`),
+  KEY `fk_post_user` (`user_id`),
+  CONSTRAINT `fk_post_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='社区帖子表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -149,10 +360,18 @@ DROP TABLE IF EXISTS `t_reimbursement`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_reimbursement` (
-  `reimb_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '报销单号，PK',
-  `amount` decimal(10,2) NOT NULL COMMENT '申请报销金额',
-  `status` int DEFAULT '0' COMMENT '0:待审, 1:通过, 2:驳回',
-  PRIMARY KEY (`reimb_id`)
+  `reimb_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '报销单号',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请人ID',
+  `amount` decimal(10,2) NOT NULL COMMENT '申请金额',
+  `status` int DEFAULT '0' COMMENT '状态：0-待审，1-通过，2-驳回',
+  `type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '报销类型',
+  `description` text COLLATE utf8mb4_unicode_ci COMMENT '报销说明',
+  `receipt_urls` text COLLATE utf8mb4_unicode_ci COMMENT '收据图片链接',
+  `review_comment` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '审核意见',
+  `created_at` datetime DEFAULT NULL COMMENT '申请时间',
+  PRIMARY KEY (`reimb_id`),
+  KEY `fk_reimbursement_user` (`user_id`),
+  CONSTRAINT `fk_reimbursement_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='报销单表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -173,10 +392,25 @@ DROP TABLE IF EXISTS `t_rescuerecord`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_rescuerecord` (
-  `record_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '记录编号，PK',
-  `location` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发现位置',
-  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '动物情况说明',
-  PRIMARY KEY (`record_id`)
+  `record_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '记录编号',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上报人ID',
+  `helper_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '接单志愿者ID（可空）',
+  `pet_id` int DEFAULT NULL COMMENT '关联动物ID（可空）',
+  `title` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '救助标题',
+  `location` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发现位置（存经纬度或地址）',
+  `description` text COLLATE utf8mb4_unicode_ci COMMENT '情况说明',
+  `status` int DEFAULT '0' COMMENT '状态：0-待接单，1-救助中，2-待确认，3-已完成，4-已关闭',
+  `found_location_text` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '前端显示的位置文本',
+  `need_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '需求类型',
+  `photo_urls` text COLLATE utf8mb4_unicode_ci COMMENT '救助图片链接（JSON数组）',
+  `created_at` datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`record_id`),
+  KEY `fk_rescue_user` (`user_id`),
+  KEY `fk_rescue_helper` (`helper_id`),
+  KEY `fk_rescue_pet` (`pet_id`),
+  CONSTRAINT `fk_rescue_helper` FOREIGN KEY (`helper_id`) REFERENCES `t_user` (`user_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_rescue_pet` FOREIGN KEY (`pet_id`) REFERENCES `t_animal` (`pet_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_rescue_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='救助记录表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -197,15 +431,22 @@ DROP TABLE IF EXISTS `t_user`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `t_user` (
-  `user_id` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户唯一ID，微信OpenID',
-  `nickname` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '昵称',
-  `avatarURL` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '头像URL',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户唯一ID（微信OpenID）',
+  `nickname` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户昵称',
+  `avatarURL` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '头像URL',
   `role` int NOT NULL COMMENT '角色：1-普通用户，2-志愿者，3-管理员',
-  `points` int DEFAULT '0' COMMENT '志愿者积分，仅志愿者有效',
-  `identityNo` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '学号/工号，仅志愿者有效',
-  `level` int DEFAULT NULL COMMENT '管理等级，仅管理员有效',
+  `points` int DEFAULT '0' COMMENT '积分（所有用户都有）',
+  `volunteer_id` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '志愿者编号（仅志愿者）',
+  `admin_id` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '管理员工号（仅管理员）',
+  `level` int DEFAULT '1' COMMENT '等级（仅志愿者有）',
+  `phone_number` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '手机号（预留）',
+  `like_count` int DEFAULT '0' COMMENT '获赞总数',
+  `follower_count` int DEFAULT '0' COMMENT '粉丝数',
+  `following_count` int DEFAULT '0' COMMENT '关注数',
+  `is_active` tinyint DEFAULT '1' COMMENT '账号是否激活：0-封禁，1-正常',
+  `created_at` datetime DEFAULT NULL COMMENT '注册时间',
   PRIMARY KEY (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -215,6 +456,35 @@ CREATE TABLE `t_user` (
 LOCK TABLES `t_user` WRITE;
 /*!40000 ALTER TABLE `t_user` DISABLE KEYS */;
 /*!40000 ALTER TABLE `t_user` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `t_volunteer_application`
+--
+
+DROP TABLE IF EXISTS `t_volunteer_application`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `t_volunteer_application` (
+  `application_id` int NOT NULL AUTO_INCREMENT COMMENT '申请ID',
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请人ID',
+  `status` int DEFAULT '0' COMMENT '状态：0-待审核，1-通过，2-驳回',
+  `apply_content` text COLLATE utf8mb4_unicode_ci COMMENT '申请理由',
+  `review_comment` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '审核意见',
+  `created_at` datetime DEFAULT NULL COMMENT '申请时间',
+  PRIMARY KEY (`application_id`),
+  KEY `fk_volunteer_user` (`user_id`),
+  CONSTRAINT `fk_volunteer_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='志愿者申请表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `t_volunteer_application`
+--
+
+LOCK TABLES `t_volunteer_application` WRITE;
+/*!40000 ALTER TABLE `t_volunteer_application` DISABLE KEYS */;
+/*!40000 ALTER TABLE `t_volunteer_application` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -226,4 +496,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-05-28 16:46:04
+-- Dump completed on 2026-05-28 21:08:11

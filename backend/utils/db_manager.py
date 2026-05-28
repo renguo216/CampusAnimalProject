@@ -88,11 +88,16 @@ class DatabaseManager:
             with self.connection.cursor() as cursor:
                 sql = f"DELETE FROM {table_name} WHERE {id_key} = %s"
                 cursor.execute(sql, (id_value,))
-            self.connection.commit()
-            print(f"成功从 {table_name} 删除 id={id_value} 的记录")
-            return True
+                self.connection.commit()
+                # ✅ 核心修改：检查是否有行被影响
+                if cursor.rowcount > 0:
+                    print(f"✅ 成功从 {table_name} 删除 id={id_value} 的记录")
+                    return True
+                else:
+                    print(f"⚠️ 未找到 id={id_value} 的记录，删除失败")
+                    return False
         except Exception as e:
-            print(f"删除失败: {e}")
+            print(f"❌ 删除失败: {e}")
             return False
 
     def update(self, table_name, id_key, id_value, data_dict):
@@ -112,11 +117,16 @@ class DatabaseManager:
                 set_clause = ', '.join([f"{key} = %s" for key in data_dict.keys()])
                 sql = f"UPDATE {table_name} SET {set_clause} WHERE {id_key} = %s"
                 cursor.execute(sql, list(data_dict.values()) + [id_value])
-            self.connection.commit()
-            print(f"成功更新 {table_name} 中 id={id_value} 的记录")
-            return True
+                self.connection.commit()
+                # ✅ 核心修改：检查是否有行被影响
+                if cursor.rowcount > 0:
+                    print(f"✅ 成功更新 {table_name} 中 id={id_value} 的记录")
+                    return True
+                else:
+                    print(f"⚠️ 未找到 id={id_value} 的记录，更新失败")
+                    return False
         except Exception as e:
-            print(f"更新失败: {e}")
+            print(f"❌ 更新失败: {e}")
             return False
 
     def get_by_id(self, table_name, id_key, id_value):
