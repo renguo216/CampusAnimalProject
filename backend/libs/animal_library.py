@@ -9,14 +9,25 @@ class AnimalLibrary:
 
     # ========== 基础增删改查 ==========
 
-    def add_animal(self, name, breed='未知', status=0, vector=None):
+    def add_animal(self, name, breed='未知', status=0, vector=None,
+                   color=None, age=0, gender=0, is_neutered=0, is_vaccinated=0,
+                   personality=None, description=None, photo_urls=None, found_location=None):
         """
-        添加新动物档案（pet_id 由数据库自动生成）
+        添加新动物档案（包含所有新增字段）
         :param name: 动物名字
-        :param breed: 品种（用户可填或AI推荐）
+        :param breed: 品种
         :param status: 状态 (0-在校, 1-已领养, 2-需医疗)
-        :param vector: 特征向量 (JSON格式字符串，由AI模块传入)
-        :return: 成功返回自动生成的 pet_id (int)，失败返回 False
+        :param vector: 特征向量 (JSON格式字符串)
+        :param color: 毛色
+        :param age: 年龄（单位：月）
+        :param gender: 性别 (0-未知, 1-弟弟, 2-妹妹)
+        :param is_neutered: 是否绝育 (0-未知, 1-是, 2-否)
+        :param is_vaccinated: 是否疫苗 (0-未知, 1-是, 2-否)
+        :param personality: 性格描述
+        :param description: 详细描述
+        :param photo_urls: 照片链接（JSON数组字符串）
+        :param found_location: 发现地点
+        :return: 成功返回 pet_id (int)，失败返回 False
         """
         # 校验
         if not name or len(name.strip()) == 0:
@@ -31,8 +42,13 @@ class AnimalLibrary:
         
         try:
             cursor = self.db.connection.cursor()
-            sql = "INSERT INTO t_animal (name, breed, status, vector) VALUES (%s, %s, %s, %s)"
-            cursor.execute(sql, (name, breed, status, vector))
+            # 构造插入语句，包含所有新字段
+            sql = """
+                INSERT INTO t_animal 
+                (name, breed, status, vector, color, age, gender, is_neutered, is_vaccinated, personality, description, photo_urls, found_location, created_at) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """
+            cursor.execute(sql, (name, breed, status, vector, color, age, gender, is_neutered, is_vaccinated, personality, description, photo_urls, found_location))
             self.db.connection.commit()
             pet_id = cursor.lastrowid  # 获取自动生成的ID
             self.db.close_database()
@@ -57,7 +73,7 @@ class AnimalLibrary:
 
     def get_animal_by_name(self, name):
         """
-        根据名字模糊查询动物档案（用于用户手动搜索）
+        根据名字模糊查询动物档案
         :return: Animal 对象列表
         """
         if not self.db.open_database():
@@ -68,7 +84,13 @@ class AnimalLibrary:
         return [Animal(**row) for row in results] if results else []
 
     def get_animals_by_status(self, status, limit=20, offset=0):
-        """按状态筛选，支持分页"""
+        """
+        按状态筛选动物档案，支持分页
+        :param status: 0-在校，1-已领养，2-需医疗
+        :param limit: 每页数量
+        :param offset: 偏移量
+        :return: Animal 对象列表
+        """
         if not self.db.open_database():
             return []
         sql = "SELECT * FROM t_animal WHERE status = %s LIMIT %s OFFSET %s"
@@ -77,7 +99,10 @@ class AnimalLibrary:
         return [Animal(**row) for row in results] if results else []
     
     def get_all_animals(self, limit=20, offset=0):
-        """获取所有动物档案（支持简单的分页）"""
+        """
+        获取所有动物档案（支持分页）
+        :return: Animal 对象列表
+        """
         if not self.db.open_database():
             return []
         sql = "SELECT * FROM t_animal LIMIT %s OFFSET %s"
@@ -85,24 +110,30 @@ class AnimalLibrary:
         self.db.close_database()
         return [Animal(**row) for row in results] if results else []
 
-    def update_animal_status(self, pet_id, new_status):
-        """更新动物状态"""
+    def update_animal(self, pet_id, update_data):
+        """
+        通用更新动物档案方法
+        :param pet_id: 动物ID
+        :param update_data: 包含要更新字段的字典 (如 {'name': '新名字', 'breed': '新品种', 'description': '新描述'})
+        :return: 成功返回 True，失败返回 False
+        """
         if not self.db.open_database():
             return False
-        success = self.db.update('t_animal', 'pet_id', pet_id, {'status': new_status})
+        # 验证 update_data 包含的字段名是否有效（可选，如果相信调用者）
+        success = self.db.update('t_animal', 'pet_id', pet_id, update_data)
         self.db.close_database()
         return success
+
+    def update_animal_status(self, pet_id, new_status):
+        """专门更新动物状态"""
+        return self.update_animal(pet_id, {'status': new_status})
 
     def update_animal_vector(self, pet_id, vector):
         """
         更新动物特征向量（由AI模块调用）
-        :param vector: JSON格式字符串，例如 "[0.1, 0.2, 0.3]"
+        :param vector: JSON格式字符串
         """
-        if not self.db.open_database():
-            return False
-        success = self.db.update('t_animal', 'pet_id', pet_id, {'vector': vector})
-        self.db.close_database()
-        return success
+        return self.update_animal(pet_id, {'vector': vector})
 
     def delete_animal(self, pet_id):
         """删除动物档案（慎用）"""
