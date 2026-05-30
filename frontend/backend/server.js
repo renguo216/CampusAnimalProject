@@ -1,45 +1,83 @@
 const http = require('http');
 const url = require('url');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = 3000;
 const HOST = '0.0.0.0';
 
+const USER_DATA_FILE = path.join(__dirname, 'user_data.json');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+function loadUserDatabase() {
+  try {
+    if (fs.existsSync(USER_DATA_FILE)) {
+      const data = fs.readFileSync(USER_DATA_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error('加载用户数据失败:', err);
+  }
+  return {};
+}
+
+function saveUserDatabase() {
+  try {
+    fs.writeFileSync(USER_DATA_FILE, JSON.stringify(userDatabase, null, 2));
+  } catch (err) {
+    console.error('保存用户数据失败:', err);
+  }
+}
+
 const mockUsers = [
   {
     user_id: 'u001',
-    phone: '13800138001',
-    password: '123456',
     nickname: '爱心志愿者',
     avatarURL: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20cartoon%20cat%20avatar%20friendly&image_size=square',
     role: 2,
     points: 150,
-    identityNo: '2021001001'
+    phone_number: '13800138001',
+    like_count: 0,
+    follower_count: 0,
+    following_count: 0,
+    is_active: 1,
+    created_at: '2024-01-01'
   },
   {
     user_id: 'u002',
-    phone: '13800138002',
-    password: '123456',
     nickname: '校园铲屎官',
     avatarURL: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20cartoon%20dog%20avatar%20happy&image_size=square',
     role: 1,
     points: 0,
-    identityNo: ''
+    phone_number: '',
+    like_count: 0,
+    follower_count: 0,
+    following_count: 0,
+    is_active: 1,
+    created_at: '2024-01-02'
   },
   {
     user_id: 'u003',
-    phone: '13800138003',
-    password: '123456',
     nickname: '管理员小王',
     avatarURL: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=professional%20admin%20avatar%20friendly&image_size=square',
     role: 3,
     points: 0,
-    identityNo: 'G2020001'
+    phone_number: '13800138003',
+    like_count: 0,
+    follower_count: 0,
+    following_count: 0,
+    is_active: 1,
+    created_at: '2024-01-03'
   }
 ];
 
 const verifyCodeStore = {};
 
-let userDatabase = {};
+let userDatabase = loadUserDatabase();
 
 const mockAnimals = [
   {
@@ -203,7 +241,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 登录接口
   if (method === 'POST' && pathname === '/api/v1/user/login') {
     const body = await parseBody(req);
     console.log('登录请求 body:', JSON.stringify(body));
@@ -213,30 +250,85 @@ const server = http.createServer(async (req, res) => {
       console.log('使用模拟用户登录');
     }
 
-    let userData = body.rawData ? JSON.parse(body.rawData) : null;
-    
-    const userId = 'user_' + Date.now();
+    let userData = body.userInfo || {};
+    let rawData = body.rawData ? JSON.parse(body.rawData) : null;
+    let userId = 'user_' + Date.now();
     const token = generateToken(userId);
     
-    if (userData) {
+    let userIdentifier = '';
+    if (rawData) {
+      userIdentifier = `${rawData.nickName || ''}_${rawData.avatarUrl || ''}_${rawData.city || ''}`;
+    } else {
+      userIdentifier = JSON.stringify(userData);
+    }
+    
+    console.log('用户标识:', userIdentifier);
+    
+    let existingUserId = null;
+    
+    const oldUsers = Object.keys(userDatabase).filter(uid => !userDatabase[uid].userIdentifier);
+    console.log('旧用户列表:', oldUsers);
+    
+    if (oldUsers.length > 0) {
+      existingUserId = oldUsers.find(uid => {
+        const user = userDatabase[uid];
+        return user.avatarURL && user.avatarURL.includes('thirdwx.qlogo.cn');
+      });
+      
+      if (existingUserId) {
+        console.log(`找到旧用户: ${existingUserId}`);
+      }
+    }
+    
+    if (!existingUserId) {
+      existingUserId = Object.keys(userDatabase).find(
+        uid => userDatabase[uid].userIdentifier === userIdentifier
+      );
+      
+      if (existingUserId) {
+        console.log(`按userIdentifier找到用户: ${existingUserId}`);
+      }
+    }
+    
+    if (!existingUserId && userData.avatarUrl) {
+      existingUserId = Object.keys(userDatabase).find(
+        uid => userDatabase[uid].avatarURL === userData.avatarUrl
+      );
+      
+      if (existingUserId) {
+        console.log(`按头像URL找到用户: ${existingUserId}`);
+      }
+    }
+    
+    if (existingUserId) {
+      userId = existingUserId;
+      console.log(`找到已有用户: ${userId}`);
+      
+      userDatabase[userId] = {
+        ...userDatabase[userId],
+        userIdentifier: userIdentifier
+      };
+      saveUserDatabase();
+    } else {
       userDatabase[userId] = {
         user_id: userId,
-        phone: '',
+        userIdentifier: userIdentifier,
         nickname: userData.nickName || '爱心志愿者',
         avatarURL: userData.avatarUrl || '',
         role: 1,
         points: 0,
-        identityNo: '',
-        gender: userData.gender,
-        country: userData.country,
-        province: userData.province,
-        city: userData.city,
-        level: 1
+        phone_number: '',
+        volunteer_id: null,
+        admin_id: null,
+        level: 1,
+        like_count: 0,
+        follower_count: 0,
+        following_count: 0,
+        is_active: 1,
+        created_at: new Date().toISOString().split('T')[0]
       };
       console.log(`新用户注册并登录: ${userId} - ${userData.nickName}`);
-    } else {
-      userDatabase[userId] = mockUsers[0];
-      userDatabase[userId].user_id = userId;
+      saveUserDatabase();
     }
     
     const currentUser = userDatabase[userId];
@@ -251,14 +343,14 @@ const server = http.createServer(async (req, res) => {
         avatarURL: currentUser.avatarURL,
         role: currentUser.role,
         points: currentUser.points || 0,
-        identityNo: currentUser.identityNo || '',
+        phone_number: currentUser.phone_number || '',
         level: currentUser.level || 1
       }
     });
     return;
   }
 
-  if (method === 'POST' && pathname === '/api/v1/user/update') {
+  if (method === 'POST' && pathname === '/api/v1/upload/avatar') {
     const body = await parseBody(req);
     const authHeader = req.headers['authorization'];
     
@@ -269,29 +361,125 @@ const server = http.createServer(async (req, res) => {
     
     const token = authHeader.split(' ')[1];
     const tokenParts = token.split('_');
-    const userId = tokenParts[1] ? 'user_' + tokenParts[1] : null;
+    let userId = tokenParts[2] ? 'user_' + tokenParts[2] : null;
     
     if (!userId || !userDatabase[userId]) {
-      sendResponse(res, 404, { success: false, message: '用户不存在' });
+      userId = Object.keys(userDatabase)[0] || 'user_' + Date.now();
+    }
+    
+    if (!body.image) {
+      sendResponse(res, 400, { success: false, message: '缺少图片数据' });
       return;
     }
     
+    try {
+      const base64Data = body.image.replace(/^data:image\/\w+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const filename = `${userId}_${Date.now()}.jpg`;
+      const filepath = path.join(UPLOADS_DIR, filename);
+      
+      fs.writeFileSync(filepath, imageBuffer);
+      
+      const avatarUrl = `http://192.168.8.73:3000/uploads/${filename}`;
+      
+      userDatabase[userId].avatarURL = avatarUrl;
+      saveUserDatabase();
+      
+      console.log(`头像上传成功: ${userId} -> ${avatarUrl}`);
+      
+      sendResponse(res, 200, {
+        success: true,
+        message: '头像上传成功',
+        avatarUrl: avatarUrl
+      });
+    } catch (err) {
+      console.error('头像上传失败:', err);
+      sendResponse(res, 500, { success: false, message: '头像上传失败' });
+    }
+    return;
+  }
+
+  if (method === 'GET' && pathname.startsWith('/uploads/')) {
+    const filename = pathname.replace('/uploads/', '');
+    const filepath = path.join(UPLOADS_DIR, filename);
+    
+    if (!fs.existsSync(filepath)) {
+      res.writeHead(404);
+      res.end('File not found');
+      return;
+    }
+    
+    const fileContent = fs.readFileSync(filepath);
+    res.writeHead(200, {
+      'Content-Type': 'image/jpeg',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(fileContent);
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/v1/user/update') {
+    const body = await parseBody(req);
+    const authHeader = req.headers['authorization'];
+    
+    console.log('Authorization header:', authHeader);
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('未授权：缺少Bearer token');
+      sendResponse(res, 401, { success: false, message: '未授权' });
+      return;
+    }
+    
+    const token = authHeader.split(' ')[1];
+    console.log('Token:', token);
+    
+    const tokenParts = token.split('_');
+    console.log('Token parts:', tokenParts);
+    
+    let userId = tokenParts[2] ? 'user_' + tokenParts[2] : null;
+    
+    if (!userId || !userDatabase[userId]) {
+      console.log('用户不存在或token无效，使用第一个模拟用户');
+      userId = Object.keys(userDatabase)[0] || 'user_' + Date.now();
+    }
+    
+    console.log('最终使用的userId:', userId);
+    console.log('userDatabase中的用户:', Object.keys(userDatabase));
+    
     console.log(`更新用户信息: ${userId}`, JSON.stringify(body));
+    
+    const allowedFields = ['avatarURL', 'nickname', 'phone_number'];
+    const updateData = {};
+    
+    allowedFields.forEach(field => {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field];
+      }
+    });
     
     userDatabase[userId] = {
       ...userDatabase[userId],
-      ...body
+      ...updateData
     };
+    
+    saveUserDatabase();
     
     sendResponse(res, 200, {
       success: true,
       message: '用户信息更新成功',
-      user: userDatabase[userId]
+      user: {
+        user_id: userDatabase[userId].user_id,
+        nickname: userDatabase[userId].nickname,
+        avatarURL: userDatabase[userId].avatarURL,
+        role: userDatabase[userId].role,
+        points: userDatabase[userId].points || 0,
+        phone_number: userDatabase[userId].phone_number || '',
+        level: userDatabase[userId].level || 1
+      }
     });
     return;
   }
 
-  // AI识别接口
   if (method === 'POST' && pathname === '/api/v1/ai/recognize') {
     console.log('AI识别请求');
     
@@ -325,7 +513,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 获取动物列表
   if (method === 'GET' && pathname === '/api/v1/animals/search') {
     sendResponse(res, 200, {
       success: true,
@@ -335,7 +522,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 领养申请
   if (method === 'POST' && pathname === '/api/v1/adoption/apply') {
     const body = await parseBody(req);
     console.log('领养申请:', JSON.stringify(body));
@@ -347,7 +533,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 我的领养记录
   if (method === 'GET' && pathname === '/api/v1/adoption/my-records') {
     sendResponse(res, 200, {
       success: true,
@@ -364,7 +549,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 救助记录
   if (method === 'POST' && pathname === '/api/v1/rescue/records') {
     const body = await parseBody(req);
     console.log('救助记录:', JSON.stringify(body));
@@ -377,7 +561,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 我的救助记录
   if (method === 'GET' && pathname === '/api/v1/rescue/my-records') {
     sendResponse(res, 200, {
       success: true,
@@ -395,7 +578,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 社区帖子
   if (method === 'POST' && pathname === '/api/v1/community/posts') {
     const body = await parseBody(req);
     console.log('发布帖子:', JSON.stringify(body));
@@ -415,7 +597,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 志愿者任务
   if (method === 'GET' && pathname === '/api/v1/tasks/volunteer') {
     sendResponse(res, 200, {
       success: true,
@@ -446,7 +627,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 志愿者申请
   if (method === 'POST' && pathname === '/api/v1/volunteer/apply') {
     const body = await parseBody(req);
     console.log('志愿者申请:', JSON.stringify(body));
@@ -467,7 +647,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 募捐项目
   if (method === 'GET' && pathname === '/api/v1/donation/projects') {
     sendResponse(res, 200, {
       success: true,
@@ -502,7 +681,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 积分商城
   if (method === 'GET' && pathname === '/api/v1/points/my-points') {
     sendResponse(res, 200, {
       success: true,
@@ -569,7 +747,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 报销申请
   if (method === 'POST' && pathname === '/api/v1/reimbursement/apply') {
     const body = await parseBody(req);
     console.log('报销申请:', JSON.stringify(body));
@@ -599,7 +776,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 管理后台接口
   if (method === 'GET' && pathname === '/api/v1/admin/dashboard/stats') {
     sendResponse(res, 200, {
       success: true,

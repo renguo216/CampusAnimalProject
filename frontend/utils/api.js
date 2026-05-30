@@ -1,4 +1,4 @@
-const BASE_URL = 'http://192.168.193.73:3000/api/v1';
+const BASE_URL = 'http://192.168.8.73:3000/api/v1';
 
 const request = (url, method, data = {}) => {
   const app = getApp();
@@ -25,7 +25,8 @@ const request = (url, method, data = {}) => {
 
 module.exports = {
   login: (code, userInfo) => request('/user/login', 'POST', { code, ...userInfo }),
-  updateUserInfo: (userData) => request('/user/update', 'POST', userData),
+  updateUserInfo: (data) => request('/user/update', 'POST', data),
+  uploadAvatar: (imageData) => request('/upload/avatar', 'POST', { image: imageData }),
   verifyStudent: (userId, identityNo) => request('/user/verify', 'POST', { userId, identityNo }),
 
   getPetList: (criteria) => request('/animals/search', 'GET', criteria),

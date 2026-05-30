@@ -4,12 +4,11 @@ page {
 }
 
 .adoption-container {
-  padding-top: var(--status-bar-height);
   padding-bottom: 120rpx;
 }
 
 .header {
-  padding-top: 20rpx;
+  padding-top: 160rpx;
 }
 
 .top-banner {

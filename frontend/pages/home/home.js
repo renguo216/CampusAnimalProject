@@ -79,14 +79,14 @@ Page({
   },
 
   navigateToAdoption: function() {
-    wx.reLaunch({ url: '/pages/adoption/adoption' });
+    wx.navigateTo({ url: '/pages/adoption/adoption' });
   },
 
   navigateToCommunity: function() {
-    wx.reLaunch({ url: '/pages/community/community' });
+    wx.navigateTo({ url: '/pages/community/community' });
   },
 
   navigateToProfile: function() {
-    wx.reLaunch({ url: '/pages/profile/profile' });
+    wx.navigateTo({ url: '/pages/profile/profile' });
   }
 });

@@ -11,13 +11,18 @@
 
   <view class="form-section">
     <view class="form-item">
+      <view class="form-label">用户ID</view>
+      <view class="form-value">{{userInfo.user_id}}</view>
+    </view>
+
+    <view class="form-item">
       <view class="form-label">昵称</view>
       <input 
         class="form-input" 
         placeholder="请输入昵称" 
         value="{{userInfo.nickname}}" 
         bindinput="onNicknameInput"
-        maxlength="20"
+        maxlength="50"
       />
     </view>
 
@@ -27,20 +32,9 @@
         class="form-input" 
         type="number" 
         placeholder="请输入手机号" 
-        value="{{userInfo.phone}}" 
+        value="{{userInfo.phone_number}}" 
         bindinput="onPhoneInput"
         maxlength="11"
-      />
-    </view>
-
-    <view class="form-item">
-      <view class="form-label">学号/工号</view>
-      <input 
-        class="form-input" 
-        placeholder="请输入校园学号或工号（选填）" 
-        value="{{userInfo.identityNo}}" 
-        bindinput="onIdentityInput"
-        maxlength="20"
       />
     </view>
   </view>

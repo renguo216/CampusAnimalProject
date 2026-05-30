@@ -15,7 +15,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 60rpx 30rpx 30rpx;
+  padding: 160rpx 30rpx 30rpx;
   background-color: #ffffff;
 }
 

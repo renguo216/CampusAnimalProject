@@ -4,13 +4,12 @@ page {
 }
 
 .profile-container {
-  padding-top: var(--status-bar-height);
   padding-bottom: 120rpx;
 }
 
 .header-section {
   background: linear-gradient(135deg, #fff3e6 0%, #ffe4c4 100%);
-  padding: 30rpx 30rpx 40rpx;
+  padding: 160rpx 30rpx 40rpx;
 }
 
 .user-info {

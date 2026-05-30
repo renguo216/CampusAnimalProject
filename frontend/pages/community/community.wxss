@@ -4,14 +4,13 @@ page {
 }
 
 .community-container {
-  padding-top: var(--status-bar-height);
   padding-bottom: 120rpx;
 }
 
 .header {
   display: flex;
   align-items: center;
-  padding: 20rpx 30rpx 30rpx;
+  padding: 160rpx 30rpx 30rpx;
   background-color: #ffffff;
 }
 
