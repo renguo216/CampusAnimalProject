@@ -1,3 +1,6 @@
 pymysql
-flask
 python-dotenv
+fastapi
+uvicorn
+pydantic
+requests
