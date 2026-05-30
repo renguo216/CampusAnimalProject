@@ -48,6 +48,12 @@ Page({
     wx.showToast({ title: '我的粉丝', icon: 'none' });
   },
 
+  goToMyRescues: function() {
+    wx.navigateTo({
+      url: '/pages/profile/rescue_list'
+    });
+  },
+
   goToMyReports: function() {
     wx.showToast({ title: '我上报的救助记录', icon: 'none' });
   },

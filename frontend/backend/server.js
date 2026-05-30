@@ -198,6 +198,36 @@ const mockCommunityPosts = [
   }
 ];
 
+let rescueRecordsDatabase = [
+  {
+    record_id: 'REC001',
+    user_id: 'user_1780130102474',
+    pet_id: 'a001',
+    rescue_time: '2026-05-28 14:30:00',
+    location: '图书馆附近',
+    description: '发现一只受伤的橘猫，后腿无法行走',
+    status: 'completed'
+  },
+  {
+    record_id: 'REC002',
+    user_id: 'user_1780130102474',
+    pet_id: 'a002',
+    rescue_time: '2026-05-25 10:15:00',
+    location: '食堂门口',
+    description: '一只流浪小狗，性格温顺',
+    status: 'completed'
+  },
+  {
+    record_id: 'REC003',
+    user_id: 'user_1780130373271',
+    pet_id: 'a003',
+    rescue_time: '2026-05-20 16:45:00',
+    location: '学生宿舍区',
+    description: '三花猫，已完成疫苗接种',
+    status: 'completed'
+  }
+];
+
 function generateToken(userId) {
   return 'token_' + userId + '_' + Date.now();
 }
@@ -480,6 +510,88 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && pathname === '/api/v1/rescue/my-records') {
+    const query = parsedUrl.query;
+    const userId = query.user_id;
+    
+    console.log(`========================================`);
+    console.log(`获取用户救助记录 API被调用`);
+    console.log(`请求参数 user_id: "${userId}"`);
+    console.log(`rescueRecordsDatabase中的所有记录:`);
+    rescueRecordsDatabase.forEach((record, index) => {
+      console.log(`  ${index + 1}. record_id: ${record.record_id}, user_id: ${record.user_id}`);
+    });
+    
+    let userRescueRecords = [];
+    
+    if (userId) {
+      userRescueRecords = rescueRecordsDatabase.filter(record => record.user_id === userId);
+      console.log(`按user_id筛选，记录数: ${userRescueRecords.length}`);
+    } else {
+      console.log('未传入user_id，返回所有记录');
+      userRescueRecords = rescueRecordsDatabase;
+    }
+    
+    const formattedRecords = userRescueRecords.map(record => {
+      const animal = mockAnimals.find(a => a.id === record.pet_id);
+      return {
+        record_id: record.record_id,
+        rescue_time: record.rescue_time,
+        pet_id: record.pet_id,
+        location: record.location,
+        description: record.description,
+        status: record.status,
+        animal: animal ? {
+          name: animal.name,
+          breed: animal.color,
+          gender: animal.type === 'cat' ? 1 : 2,
+          photo_urls: [animal.image]
+        } : {
+          name: '未知动物',
+          breed: '',
+          gender: 0,
+          photo_urls: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20pet%20placeholder&image_size=square']
+        }
+      };
+    });
+    
+    console.log(`返回记录数: ${formattedRecords.length}`);
+    console.log(`返回数据:`, JSON.stringify(formattedRecords, null, 2));
+    console.log(`========================================`);
+    
+    sendResponse(res, 200, {
+      success: true,
+      code: 200,
+      msg: 'success',
+      data: formattedRecords
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/v1/rescue/records') {
+    const body = await parseBody(req);
+    console.log('救助记录:', JSON.stringify(body));
+    
+    const newRecord = {
+      record_id: 'REC' + Date.now(),
+      user_id: body.user_id || 'user_1780130102474',
+      pet_id: body.pet_id || 'a001',
+      rescue_time: new Date().toLocaleString(),
+      location: body.location || '',
+      description: body.description || '',
+      status: 'pending'
+    };
+    
+    rescueRecordsDatabase.push(newRecord);
+    
+    sendResponse(res, 200, {
+      success: true,
+      message: '救助报备成功，志愿者将尽快前往',
+      recordId: newRecord.record_id
+    });
+    return;
+  }
+
   if (method === 'POST' && pathname === '/api/v1/ai/recognize') {
     console.log('AI识别请求');
     
@@ -543,35 +655,6 @@ const server = http.createServer(async (req, res) => {
           applyTime: '2024-01-15',
           status: 'pending',
           statusText: '审核中'
-        }
-      ]
-    });
-    return;
-  }
-
-  if (method === 'POST' && pathname === '/api/v1/rescue/records') {
-    const body = await parseBody(req);
-    console.log('救助记录:', JSON.stringify(body));
-    
-    sendResponse(res, 200, {
-      success: true,
-      message: '救助报备成功，志愿者将尽快前往',
-      recordId: 'R' + Date.now()
-    });
-    return;
-  }
-
-  if (method === 'GET' && pathname === '/api/v1/rescue/my-records') {
-    sendResponse(res, 200, {
-      success: true,
-      data: [
-        {
-          id: 1,
-          title: '图书馆受伤橘猫',
-          location: '西科大图书馆',
-          time: '2024-01-15',
-          status: 'completed',
-          statusText: '已完成'
         }
       ]
     });

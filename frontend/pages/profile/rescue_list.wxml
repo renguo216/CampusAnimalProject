@@ -1,0 +1,39 @@
+<view class="container">
+  <view class="header">
+    <text class="title">我救助的动物</text>
+  </view>
+
+  <view wx:if="{{!isLoading && rescueList.length === 0}}" class="empty-tip">
+    <text>您还没有救助过动物哦~</text>
+  </view>
+
+  <view class="rescue-list" wx:else>
+    <view class="rescue-card"
+          wx:for="{{rescueList}}"
+          wx:key="record_id"
+          bindtap="goToDetail"
+          data-petid="{{item.pet_id}}">
+
+      <image class="pet-avatar"
+             src="{{item.animal.photo_urls[0] || '/images/default-pet.png'}}"
+             mode="aspectFill"></image>
+
+      <view class="rescue-info">
+        <view class="pet-name">
+          {{item.animal.name || '未知小可爱'}}
+          <text class="gender">{{item.animal.gender === 1 ? '♂' : (item.animal.gender === 2 ? '♀' : '')}}</text>
+        </view>
+
+        <view class="pet-breed" wx:if="{{item.animal.breed}}">
+          品种：{{item.animal.breed}}
+        </view>
+
+        <view class="rescue-time">
+          救助时间：{{item.rescue_time}}
+        </view>
+
+      </view>
+
+    </view>
+  </view>
+</view>

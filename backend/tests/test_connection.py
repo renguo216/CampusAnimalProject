@@ -1,7 +1,7 @@
 import pymysql
 
 # 替换成你 MySQL 的 root 密码
-PASSWORD = '205216' 
+PASSWORD = '123456'
 
 try:
     connection = pymysql.connect(

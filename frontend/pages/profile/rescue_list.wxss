@@ -1,0 +1,82 @@
+page {
+  background-color: #FFF8E7;
+}
+
+.container {
+  padding: 0 30rpx 30rpx 30rpx;
+  background-color: #FFF8E7;
+}
+
+.header {
+  text-align: center;
+  padding-top: 200rpx;
+  margin-bottom: 40rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.empty-tip {
+  text-align: center;
+  color: #999;
+  margin-top: 100rpx;
+  font-size: 28rpx;
+}
+
+.rescue-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.rescue-card {
+  display: flex;
+  align-items: center;
+  background-color: transparent;
+  padding: 30rpx 0;
+  margin-bottom: 30rpx;
+  width: 100%;
+}
+
+.pet-avatar {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 16rpx;
+  background-color: #eee;
+  flex-shrink: 0;
+}
+
+.rescue-info {
+  margin-left: 30rpx;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.pet-name {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333;
+  display: flex;
+  align-items: center;
+}
+
+.gender {
+  color: #ff6b81;
+  margin-left: 10rpx;
+  font-size: 32rpx;
+}
+
+.pet-breed {
+  font-size: 28rpx;
+  color: #666;
+  margin-top: 15rpx;
+}
+
+.rescue-time {
+  font-size: 26rpx;
+  color: #999;
+  margin-top: 15rpx;
+}

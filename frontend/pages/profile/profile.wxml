@@ -32,6 +32,12 @@
   </view>
 
   <view class="quick-actions">
+    <view class="action-item" bindtap="goToMyRescues">
+      <view class="action-icon bg-green">
+        <text>🐾</text>
+      </view>
+      <text class="action-text">我救助的</text>
+    </view>
     <view class="action-item" bindtap="goToMyReports">
       <view class="action-icon bg-orange">
         <text>📝</text>
