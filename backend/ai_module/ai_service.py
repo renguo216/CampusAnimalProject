@@ -64,7 +64,7 @@ class AnimalAIService:
         }
         
         # 狗的品种关键词
-        dog_breeds = {
+         dog_breeds = {
             'golden_retriever': '金毛寻回犬',
             'labrador_retriever': '拉布拉多',
             'german_shepherd': '德国牧羊犬',
@@ -77,7 +77,12 @@ class AnimalAIService:
             'rottweiler': '罗威纳',
             'boxer': '拳师犬',
             'great_dane': '大丹犬',
-            'saint_bernard': '圣伯纳犬'
+            'saint_bernard': '圣伯纳犬',
+            'border_collie': '边境牧羊犬',
+            'collie': '柯利犬',
+            'appenzell': '阿彭策尔山地犬',
+            'english_springer': '英国史宾格犬',
+            'bernese_mountain_dog': '伯恩山犬',
         }
         
         # 遍历预测结果，查找猫狗
