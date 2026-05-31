@@ -1,356 +1,670 @@
-# ===== backend/tests/test_animal_library.py =====
+# backend/tests/test_animal_library.py
 """
-测试 AnimalLibrary 所有功能
-运行方式（在项目根目录执行）：
+AnimalLibrary 完整测试套件
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_animal_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_animal 表已存在
+    - AI 服务（可选）：python -m backend.ai_module.flask_api
+    - 测试图片：backend/tests/test_data/ 目录下存在：
+        虎斑猫.jpg, 金毛寻回犬.jpg, 边境牧羊犬.jpg, 猎豹.jpg
 """
-from backend.libs.animal_library import AnimalLibrary
-import uuid
+
 import json
+import os
+import sys
+import unittest
+import uuid
+import requests
+from unittest.mock import patch
+
+# 将项目根目录加入路径，确保 backend 包可导入
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from backend.libs.animal_library import AnimalLibrary
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+# ==================== 测试配置 ====================
+
+TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_data")
+CAT_IMG = os.path.join(TEST_DATA_DIR, "虎斑猫.jpg")
+DOG_IMG = os.path.join(TEST_DATA_DIR, "金毛寻回犬.jpg")
+DOG2_IMG = os.path.join(TEST_DATA_DIR, "边境牧羊犬.jpg")
+CHEETAH_IMG = os.path.join(TEST_DATA_DIR, "猎豹.jpg")
+
+AI_BASE_URL = "http://localhost:8001"
 
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+def _ai_service_available() -> bool:
+    """检查 AI 服务是否可访问"""
+    try:
+        r = requests.get(f"{AI_BASE_URL}/", timeout=3)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
-def main():
-    animal_lib = AnimalLibrary()
+# ==================== 基础功能 + Mock AI 测试 ====================
 
-    # ======== 清理旧测试数据 ========
-    if animal_lib.db.open_database():
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'test_animal_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'test_adopted_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'similar_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'to_be_deleted_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'photo_test_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'location_test_%'")
-        animal_lib.db.close_database()
-        print("已清理旧测试数据")
+class TestAnimalLibrary(unittest.TestCase):
+    """AnimalLibrary 基础功能 + Mock AI 测试"""
 
-    print("\n" + "=" * 50 + "\n  开始测试 AnimalLibrary\n" + "=" * 50)
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = AnimalLibrary()
+        cls._cleanup_all_test_data()
 
-    # ========== 1. 添加动物 ==========
-    print("\n1. 测试添加动物 (add_animal)...")
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all_test_data()
 
-    test_name = f"test_animal_{uuid.uuid4().hex[:8]}"
-    pet_id = animal_lib.add_animal(
-        name=test_name,
-        breed="中华田园猫",
-        status=0,
-        color="橘色",
-        age=6,
-        gender=1,
-        is_neutered=0,
-        is_vaccinated=1,
-        personality="温顺撒娇",
-        description="在图书馆附近发现的流浪猫",
-        photo_urls='["http://example.com/cat1.jpg"]',
-        found_location="图书馆南门"
-    )
-    if pet_id:
-        log_pass(f"添加动物，name={test_name}", f"pet_id={pet_id}")
-    else:
-        log_fail("添加动物", "返回 False")
+    def setUp(self):
+        self.created_pet_ids = []
+        self.created_names = []
 
-    # 1.2 空名字
-    if not animal_lib.add_animal("", "测试", 0):
-        log_pass("空名字", "返回 False")
-    else:
-        log_fail("空名字", "返回 True")
+    def tearDown(self):
+        self._cleanup_created_data()
 
-    # 1.3 非法状态
-    if not animal_lib.add_animal("测试", "测试", status=5):
-        log_pass("非法状态(5)", "返回 False")
-    else:
-        log_fail("非法状态(5)", "返回 True")
+    # ---------- 内部辅助 ----------
 
-    # 1.4 非法性别
-    if not animal_lib.add_animal("测试", "测试", gender=99):
-        log_pass("非法性别(99)", "返回 False")
-    else:
-        log_fail("非法性别(99)", "返回 True")
+    @classmethod
+    def _cleanup_all_test_data(cls):
+        """清理所有测试数据（按 name 前缀）"""
+        if cls.lib.db.open_database():
+            prefixes = [
+                'test_animal_%', 'test_adopted_%', 'similar_%',
+                'to_be_deleted_%', 'photo_test_%', 'location_test_%',
+                'updated_%', 'test_ai_%', 'test_fallback_%', 'real_%',
+                'mock_%', 'vector_%', 'search_%'
+            ]
+            for prefix in prefixes:
+                cls.lib.db.execute_raw_sql(
+                    "DELETE FROM t_animal WHERE name LIKE %s", (prefix,)
+                )
+            cls.lib.db.close_database()
 
-    # 1.5 非法绝育状态
-    if not animal_lib.add_animal("测试", "测试", is_neutered=99):
-        log_pass("非法绝育状态(99)", "返回 False")
-    else:
-        log_fail("非法绝育状态(99)", "返回 True")
+    def _cleanup_created_data(self):
+        """清理本测试方法创建的数据"""
+        if not self.created_pet_ids and not self.created_names:
+            return
+        if self.lib.db.open_database():
+            for pet_id in self.created_pet_ids:
+                self.lib.db.execute_raw_sql(
+                    "DELETE FROM t_animal WHERE pet_id = %s", (pet_id,)
+                )
+            for name in self.created_names:
+                self.lib.db.execute_raw_sql(
+                    "DELETE FROM t_animal WHERE name = %s", (name,)
+                )
+            self.lib.db.close_database()
 
-    # ========== 2. 按ID查询 ==========
-    print("\n2. 测试按ID查询 (get_animal_by_id)...")
-    if pet_id:
-        animal = animal_lib.get_animal_by_id(pet_id)
-        if animal and animal.name == test_name:
-            log_pass(f"查询存在动物，pet_id={pet_id}", f"name={animal.name}")
-        else:
-            log_fail("查询存在动物", "未找到")
+    def _track(self, result: dict) -> dict:
+        """追踪创建的动物 ID，便于 tearDown 清理"""
+        if result.get("success") and result.get("data", {}).get("pet_id"):
+            self.created_pet_ids.append(result["data"]["pet_id"])
+        return result
 
-    none_animal = animal_lib.get_animal_by_id(999999)
-    if none_animal is None:
-        log_pass("查询不存在动物", "返回 None")
-    else:
-        log_fail("查询不存在动物", "返回非空")
+    def _add_test_animal(self, **kwargs) -> dict:
+        """快速添加测试动物并追踪"""
+        defaults = {
+            "name": f"test_animal_{uuid.uuid4().hex[:8]}",
+            "breed": "中华田园猫",
+            "status": 0,
+            "color": "橘色",
+            "age": 6,
+            "gender": 1,
+            "is_neutered": 0,
+            "is_vaccinated": 1,
+            "personality": "温顺",
+            "description": "测试用",
+            "photo_urls": json.dumps(["http://example.com/cat1.jpg"]),
+            "found_location": "图书馆南门"
+        }
+        defaults.update(kwargs)
+        result = self.lib.add_animal(**defaults)
+        self._track(result)
+        if defaults.get("name"):
+            self.created_names.append(defaults["name"])
+        return result
 
-    # ========== 3. 按名字模糊查询 ==========
-    print("\n3. 测试按名字模糊查询 (get_animal_by_name)...")
-    animals = animal_lib.get_animal_by_name(test_name[:8])
-    if len(animals) >= 1:
-        log_pass(f"模糊查询 '{test_name[:8]}'", f"找到 {len(animals)} 只")
-    else:
-        log_fail("模糊查询", "未找到")
+    # ==================== 1. add_animal ====================
 
-    if len(animal_lib.get_animal_by_name("不存在的名字")) == 0:
-        log_pass("查询不存在名字", "返回空列表")
-    else:
-        log_fail("查询不存在名字", "返回非空")
+    def test_add_animal_success(self):
+        """正常添加动物"""
+        result = self._add_test_animal()
+        self.assertTrue(result["success"], f"添加失败：{result}")
+        self.assertIn("pet_id", result["data"])
+        self.assertIsInstance(result["data"]["pet_id"], int)
 
-    # ========== 4. 按状态筛选（分页） ==========
-    print("\n4. 测试按状态筛选 (get_animals_by_status)...")
-    adopted_name = f"test_adopted_{uuid.uuid4().hex[:6]}"
-    adopted_id = animal_lib.add_animal(adopted_name, "中华田园犬", status=1)
+    def test_add_animal_empty_name(self):
+        """空名字应失败"""
+        result = self.lib.add_animal("", "测试", 0)
+        self.assertFalse(result["success"])
+        self.assertIn("名字", result["message"])
 
-    result = animal_lib.get_animals_by_status(1, page=1, page_size=10)
-    if result.get("total", 0) >= 1:
-        log_pass("筛选 status=1", f"total={result['total']}")
-    else:
-        log_fail("筛选 status=1", f"total={result.get('total', 0)}")
+    def test_add_animal_invalid_status(self):
+        """非法状态应失败"""
+        result = self.lib.add_animal("测试", "测试", status=5)
+        self.assertFalse(result["success"])
+        self.assertIn("状态", result["message"])
 
-    result = animal_lib.get_animals_by_status(0, page=1, page_size=10)
-    if result.get("total", 0) >= 1:
-        log_pass("筛选 status=0", f"total={result['total']}")
-    else:
-        log_fail("筛选 status=0", f"total={result.get('total', 0)}")
+    def test_add_animal_invalid_gender(self):
+        """非法性别应失败"""
+        result = self.lib.add_animal("测试", "测试", gender=99)
+        self.assertFalse(result["success"])
+        self.assertIn("性别", result["message"])
 
-    # 非法状态
-    result = animal_lib.get_animals_by_status(99)
-    if result.get("total", 0) == 0:
-        log_pass("筛选非法状态(99)", "返回空结果")
-    else:
-        log_fail("筛选非法状态(99)", "返回非空")
+    def test_add_animal_invalid_neutered(self):
+        """非法绝育状态应失败"""
+        result = self.lib.add_animal("测试", "测试", is_neutered=99)
+        self.assertFalse(result["success"])
+        self.assertIn("绝育", result["message"])
 
-    # ========== 5. 获取所有动物（分页） ==========
-    print("\n5. 测试获取所有动物 (get_all_animals)...")
-    result = animal_lib.get_all_animals(page=1, page_size=10)
-    if result.get("total", 0) >= 2:
-        log_pass("获取所有动物", f"total={result['total']}")
-    else:
-        log_fail("获取所有动物", f"total={result.get('total', 0)}")
+    def test_add_animal_invalid_vaccinated(self):
+        """非法疫苗状态应失败"""
+        result = self.lib.add_animal("测试", "测试", is_vaccinated=99)
+        self.assertFalse(result["success"])
+        self.assertIn("疫苗", result["message"])
 
-    result = animal_lib.get_all_animals(page=1, page_size=1)
-    if len(result.get("animals", [])) == 1:
-        log_pass("分页 limit=1", "返回1条")
-    else:
-        log_fail("分页 limit=1", f"返回{len(result.get('animals', []))}条")
+    # ==================== 2. get_animal_by_id ====================
 
-    # ========== 6. 更新动物状态 ==========
-    print("\n6. 测试更新状态 (update_animal_status)...")
-    if pet_id:
-        success = animal_lib.update_animal_status(pet_id, 2)
-        if success:
-            animal = animal_lib.get_animal_by_id(pet_id)
-            if animal.status == 2:
-                log_pass("更新状态为2", "status=2")
-            else:
-                log_fail("更新状态为2", f"status={animal.status}")
-        else:
-            log_fail("更新状态为2", "返回 False")
+    def test_get_animal_by_id_success(self):
+        """查询存在的动物"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.get_animal_by_id(pet_id)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["pet_id"], pet_id)
 
-        # 非法状态
-        if not animal_lib.update_animal_status(pet_id, 99):
-            log_pass("更新非法状态(99)", "返回 False")
-        else:
-            log_fail("更新非法状态(99)", "返回 True")
+    def test_get_animal_by_id_not_found(self):
+        """查询不存在的动物"""
+        result = self.lib.get_animal_by_id(999999)
+        self.assertFalse(result["success"])
+        self.assertIn("不存在", result["message"])
 
-    if not animal_lib.update_animal_status(999999, 1):
-        log_pass("更新不存在动物", "返回 False")
-    else:
-        log_fail("更新不存在动物", "返回 True")
+    # ==================== 3. get_animal_by_name ====================
 
-    # ========== 7. 更新向量 ==========
-    print("\n7. 测试更新向量 (update_animal_vector)...")
-    if pet_id:
-        vector = json.dumps([0.1, 0.2, 0.3])
-        success = animal_lib.update_animal_vector(pet_id, vector)
-        if success:
-            animal = animal_lib.get_animal_by_id(pet_id)
-            if animal.vector == vector:
-                log_pass("更新向量", "验证成功")
-            else:
-                log_fail("更新向量", "验证失败")
-        else:
-            log_fail("更新向量", "返回 False")
+    def test_get_animal_by_name_success(self):
+        """模糊查询名字"""
+        name = f"test_animal_{uuid.uuid4().hex[:8]}"
+        self._add_test_animal(name=name)
+        result = self.lib.get_animal_by_name(name[:8])
+        self.assertTrue(result["success"])
+        self.assertGreaterEqual(len(result["data"]["animals"]), 1)
 
-    # ========== 8. 通用更新（白名单） ==========
-    print("\n8. 测试通用更新 (update_animal)...")
-    if pet_id:
+    def test_get_animal_by_name_not_found(self):
+        """查询不存在的名字"""
+        result = self.lib.get_animal_by_name("不存在的名字xyz123")
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["data"]["animals"]), 0)
+
+    # ==================== 4. get_animals_by_status ====================
+
+    def test_get_animals_by_status_success(self):
+        """按状态分页查询"""
+        self._add_test_animal(status=1)
+        result = self.lib.get_animals_by_status(1, page=1, page_size=10)
+        self.assertTrue(result["success"])
+        self.assertGreaterEqual(result["data"]["total"], 1)
+        self.assertIsInstance(result["data"]["animals"], list)
+
+    def test_get_animals_by_status_invalid(self):
+        """非法状态返回错误"""
+        result = self.lib.get_animals_by_status(99)
+        self.assertFalse(result["success"])
+        self.assertIn("状态", result["message"])
+
+    # ==================== 5. get_all_animals ====================
+
+    def test_get_all_animals_pagination(self):
+        """分页获取所有动物"""
+        self._add_test_animal()
+        self._add_test_animal()
+        result = self.lib.get_all_animals(page=1, page_size=1)
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["data"]["animals"]), 1)
+        self.assertGreaterEqual(result["data"]["total"], 2)
+
+    # ==================== 6. update_animal ====================
+
+    def test_update_animal_success(self):
+        """通用更新成功"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
         new_name = f"updated_{uuid.uuid4().hex[:6]}"
-        success = animal_lib.update_animal(pet_id, {
-            'name': new_name,
-            'description': '新描述',
-            'personality': '新性格'
+        result = self.lib.update_animal(pet_id, {
+            "name": new_name,
+            "description": "新描述",
+            "personality": "新性格"
         })
-        if success:
-            animal = animal_lib.get_animal_by_id(pet_id)
-            if animal.name == new_name:
-                log_pass("通用更新", f"name={animal.name}")
-            else:
-                log_fail("通用更新", "name未更新")
-        else:
-            log_fail("通用更新", "返回 False")
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertEqual(query["data"]["name"], new_name)
 
-        # 更新禁止字段
-        if not animal_lib.update_animal(pet_id, {'pet_id': 99999, 'created_at': '2020-01-01'}):
-            log_pass("更新禁止字段", "被正确拒绝")
-        else:
-            animal = animal_lib.get_animal_by_id(pet_id)
-            if animal.pet_id == pet_id:
-                log_pass("更新禁止字段", "字段被过滤")
-            else:
-                log_fail("更新禁止字段", "pet_id被修改")
+    def test_update_animal_forbidden_fields(self):
+        """禁止字段应被过滤，导致无有效字段可更新"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.update_animal(pet_id, {
+            "pet_id": 99999,
+            "created_at": "2020-01-01"
+        })
+        self.assertFalse(result["success"])
+        self.assertIn("没有需要更新", result["message"])
 
-    if not animal_lib.update_animal(999999, {'name': 'test'}):
-        log_pass("更新不存在动物", "返回 False")
-    else:
-        log_fail("更新不存在动物", "返回 True")
+    def test_update_animal_not_found(self):
+        """更新不存在的动物"""
+        result = self.lib.update_animal(999999, {"name": "test"})
+        self.assertFalse(result["success"])
+        self.assertIn("不存在", result["message"])
 
-    # ========== 9. 照片管理 ==========
-    print("\n9. 测试照片管理 (add_photo / remove_photo)...")
-    photo_pet_id = animal_lib.add_animal(
-        f"photo_test_{uuid.uuid4().hex[:6]}",
-        "测试照片",
-        status=0,
-        photo_urls='["http://old.jpg"]'
-    )
+    def test_update_animal_invalid_status(self):
+        """更新非法状态"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.update_animal(pet_id, {"status": 99})
+        self.assertFalse(result["success"])
+        self.assertIn("状态", result["message"])
 
-    if photo_pet_id:
-        # 添加照片
-        success = animal_lib.add_photo(photo_pet_id, "http://new1.jpg")
-        if success:
-            animal = animal_lib.get_animal_by_id(photo_pet_id)
-            photos = json.loads(animal.photo_urls)
-            if "http://new1.jpg" in photos and "http://old.jpg" in photos:
-                log_pass("添加照片", f"共{len(photos)}张")
-            else:
-                log_fail("添加照片", f"photos={photos}")
-        else:
-            log_fail("添加照片", "返回 False")
+    # ==================== 7. update_animal_status ====================
 
-        # 重复添加（应去重）
-        animal_lib.add_photo(photo_pet_id, "http://new1.jpg")
-        animal = animal_lib.get_animal_by_id(photo_pet_id)
-        photos = json.loads(animal.photo_urls)
-        if photos.count("http://new1.jpg") == 1:
-            log_pass("重复添加去重", "正确")
-        else:
-            log_fail("重复添加去重", f"出现{photos.count('http://new1.jpg')}次")
+    def test_update_animal_status_success(self):
+        """更新状态成功"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.update_animal_status(pet_id, 2)
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertEqual(query["data"]["status"], 2)
 
-        # 删除照片
-        success = animal_lib.remove_photo(photo_pet_id, "http://old.jpg")
-        if success:
-            animal = animal_lib.get_animal_by_id(photo_pet_id)
-            photos = json.loads(animal.photo_urls)
-            if "http://old.jpg" not in photos:
-                log_pass("删除照片", "old.jpg已删除")
-            else:
-                log_fail("删除照片", "old.jpg仍在")
-        else:
-            log_fail("删除照片", "返回 False")
+    def test_update_animal_status_invalid(self):
+        """更新非法状态"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.update_animal_status(pet_id, 99)
+        self.assertFalse(result["success"])
 
-        # 删除不存在照片
-        if not animal_lib.remove_photo(photo_pet_id, "http://not_exist.jpg"):
-            log_pass("删除不存在照片", "返回 False")
-        else:
-            log_fail("删除不存在照片", "返回 True")
+    # ==================== 8. update_animal_vector ====================
 
-    # ========== 10. 按地点搜索 ==========
-    print("\n10. 测试按地点搜索 (search_animals_by_location)...")
-    loc_pet_id = animal_lib.add_animal(
-        f"location_test_{uuid.uuid4().hex[:6]}",
-        "地点测试",
-        status=0,
-        found_location="图书馆北门草丛"
-    )
+    def test_update_animal_vector_success(self):
+        """更新向量成功"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        vector = json.dumps([0.1, 0.2, 0.3])
+        result = self.lib.update_animal_vector(pet_id, vector)
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertEqual(query["data"]["vector"], vector)
 
-    result = animal_lib.search_animals_by_location("图书馆", page=1, page_size=10)
-    if result.get("total", 0) >= 1:
-        log_pass("搜索地点'图书馆'", f"total={result['total']}")
-    else:
-        log_fail("搜索地点'图书馆'", f"total={result.get('total', 0)}")
+    # ==================== 9. delete_animal ====================
 
-    result = animal_lib.search_animals_by_location("火星", page=1, page_size=10)
-    if result.get("total", 0) == 0:
-        log_pass("搜索地点'火星'", "返回空结果")
-    else:
-        log_fail("搜索地点'火星'", "返回非空")
+    def test_delete_animal_success(self):
+        """删除成功"""
+        add_result = self._add_test_animal()
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.delete_animal(pet_id)
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertFalse(query["success"])
+        if pet_id in self.created_pet_ids:
+            self.created_pet_ids.remove(pet_id)
 
-    # ========== 11. 统计汇总 ==========
-    print("\n11. 测试统计汇总 (get_animal_statistics)...")
-    stats = animal_lib.get_animal_statistics()
-    if stats:
-        total = stats.get("total", 0)
-        on_campus = stats.get("on_campus", 0)
-        adopted = stats.get("adopted", 0)
-        medical = stats.get("medical_needed", 0)
-        if total >= on_campus + adopted + medical:
-            log_pass("统计汇总", f"total={total}, 在校={on_campus}, 领养={adopted}, 医疗={medical}")
-        else:
-            log_fail("统计汇总", "数据不一致")
-    else:
-        log_fail("统计汇总", "返回 None")
+    def test_delete_animal_not_found(self):
+        """删除不存在的动物"""
+        result = self.lib.delete_animal(999999)
+        self.assertFalse(result["success"])
 
-    # ========== 12. 相似动物搜索 ==========
-    print("\n12. 测试相似动物搜索 (search_similar_animals)...")
-    sim1 = animal_lib.add_animal(f"similar_1_{uuid.uuid4().hex[:6]}", "相似猫1", status=0, vector=json.dumps([0.1, 0.2, 0.3]))
-    sim2 = animal_lib.add_animal(f"similar_2_{uuid.uuid4().hex[:6]}", "相似猫2", status=0, vector=json.dumps([0.9, 0.8, 0.7]))
+    # ==================== 10. add_photo ====================
 
-    if sim1 and sim2:
-        results = animal_lib.search_similar_animals([0.1, 0.2, 0.3], limit=2)
-        if len(results) >= 1 and results[0].name.startswith("similar_1"):
-            log_pass("相似搜索", f"最相似={results[0].name}")
-        else:
-            log_fail("相似搜索", f"结果={results[0].name if results else '空'}")
+    def test_add_photo_success(self):
+        """添加照片成功"""
+        add_result = self._add_test_animal(photo_urls=json.dumps(["http://old.jpg"]))
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.add_photo(pet_id, "http://new1.jpg")
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        photos = json.loads(query["data"]["photo_urls"])
+        self.assertIn("http://new1.jpg", photos)
+        self.assertIn("http://old.jpg", photos)
 
-    # 无效向量
-    if len(animal_lib.search_similar_animals("invalid")) == 0:
-        log_pass("无效向量搜索", "返回空列表")
-    else:
-        log_fail("无效向量搜索", "返回非空")
+    def test_add_photo_duplicate(self):
+        """重复添加应去重"""
+        add_result = self._add_test_animal(photo_urls=json.dumps(["http://dup.jpg"]))
+        pet_id = add_result["data"]["pet_id"]
+        self.lib.add_photo(pet_id, "http://dup.jpg")
+        result = self.lib.add_photo(pet_id, "http://dup.jpg")
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        photos = json.loads(query["data"]["photo_urls"])
+        self.assertEqual(photos.count("http://dup.jpg"), 1)
 
-    # ========== 13. 删除动物 ==========
-    print("\n13. 测试删除动物 (delete_animal)...")
-    del_id = animal_lib.add_animal(f"to_be_deleted_{uuid.uuid4().hex[:6]}", "待删除", status=0)
-    if del_id:
-        success = animal_lib.delete_animal(del_id)
-        if success and animal_lib.get_animal_by_id(del_id) is None:
-            log_pass("删除动物", "删除成功")
-        else:
-            log_fail("删除动物", "删除失败或仍存在")
+    # ==================== 11. remove_photo ====================
 
-    if not animal_lib.delete_animal(999999):
-        log_pass("删除不存在动物", "返回 False")
-    else:
-        log_fail("删除不存在动物", "返回 True")
+    def test_remove_photo_success(self):
+        """移除照片成功"""
+        add_result = self._add_test_animal(photo_urls=json.dumps(["http://a.jpg", "http://b.jpg"]))
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.remove_photo(pet_id, "http://a.jpg")
+        self.assertTrue(result["success"])
+        query = self.lib.get_animal_by_id(pet_id)
+        photos = json.loads(query["data"]["photo_urls"])
+        self.assertNotIn("http://a.jpg", photos)
+        self.assertIn("http://b.jpg", photos)
 
-    # ========== 14. 清理 ==========
-    print("\n14. 清理测试数据...")
-    if animal_lib.db.open_database():
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'test_animal_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'test_adopted_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'similar_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'to_be_deleted_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'photo_test_%'")
-        animal_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE 'location_test_%'")
-        animal_lib.db.close_database()
-        log_pass("清理数据", "完成")
-    else:
-        log_fail("清理数据", "连接失败")
+    def test_remove_photo_not_found(self):
+        """移除不存在的照片"""
+        add_result = self._add_test_animal(photo_urls=json.dumps(["http://a.jpg"]))
+        pet_id = add_result["data"]["pet_id"]
+        result = self.lib.remove_photo(pet_id, "http://not_exist.jpg")
+        self.assertFalse(result["success"])
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    # ==================== 12. search_animals_by_location ====================
+
+    def test_search_animals_by_location_success(self):
+        """按地点搜索"""
+        self._add_test_animal(found_location="图书馆北门草丛")
+        result = self.lib.search_animals_by_location("图书馆", page=1, page_size=10)
+        self.assertTrue(result["success"])
+        self.assertGreaterEqual(result["data"]["total"], 1)
+
+    def test_search_animals_by_location_not_found(self):
+        """搜索不存在的地点"""
+        result = self.lib.search_animals_by_location("火星xyz", page=1, page_size=10)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["total"], 0)
+
+    # ==================== 13. get_animal_statistics ====================
+
+    def test_get_animal_statistics(self):
+        """统计汇总"""
+        result = self.lib.get_animal_statistics()
+        self.assertTrue(result["success"])
+        data = result["data"]
+        self.assertIn("total", data)
+        self.assertIn("on_campus", data)
+        self.assertIn("adopted", data)
+        self.assertIn("medical_needed", data)
+        self.assertGreaterEqual(data["total"], data["on_campus"] + data["adopted"] + data["medical_needed"])
+
+    # ==================== 14. search_similar_animals ====================
+
+    def test_search_similar_animals_success(self):
+        """向量相似度搜索"""
+        name1 = f"similar_1_{uuid.uuid4().hex[:6]}"
+        name2 = f"similar_2_{uuid.uuid4().hex[:6]}"
+        self._add_test_animal(name=name1, vector=json.dumps([0.1, 0.2, 0.3]))
+        self._add_test_animal(name=name2, vector=json.dumps([0.9, 0.8, 0.7]))
+        result = self.lib.search_similar_animals([0.1, 0.2, 0.3], limit=2)
+        self.assertTrue(result["success"])
+        sims = result["data"]["similar_animals"]
+        self.assertGreaterEqual(len(sims), 1)
+        self.assertEqual(sims[0]["animal"]["name"], name1)
+
+    def test_search_similar_animals_invalid_vector(self):
+        """无效向量返回错误 — 先确保库里有 vector 记录，才能触发参数校验"""
+        # 先插入一条带 vector 的数据，确保 search_similar_animals 不会提前返回空结果
+        self._add_test_animal(
+            name=f"vector_holder_{uuid.uuid4().hex[:6]}",
+            vector=json.dumps([0.1, 0.2, 0.3])
+        )
+        result = self.lib.search_similar_animals("invalid")
+        self.assertFalse(result["success"])
+        self.assertIn("格式", result["message"])
+
+    # ==================== 15. add_animal_with_ai (Mock) ====================
+
+    @patch('backend.libs.animal_library.detect_species')
+    @patch('backend.libs.animal_library.extract_features')
+    @patch('backend.libs.animal_library.add_animal_to_ai_db')
+    def test_add_animal_with_ai_mock_success(self, mock_add_ai, mock_extract, mock_detect):
+        """AI识别成功场景（Mock）"""
+        mock_detect.return_value = {
+            "success": True,
+            "category": "cat",
+            "breed": "tabby",
+            "breed_name": "虎斑猫",
+            "confidence": 0.95
+        }
+        mock_extract.return_value = {
+            "success": True,
+            "features": [0.1, 0.2, 0.3, 0.4],
+            "dimension": 4
+        }
+        mock_add_ai.return_value = {"success": True}
+
+        name = f"test_ai_{uuid.uuid4().hex[:6]}"
+        result = self.lib.add_animal_with_ai(
+            photo_bytes=b"fake_image_bytes",
+            name=name,
+            status=0,
+            color="黑白",
+            age=12,
+            gender=1,
+            description="AI识别测试猫"
+        )
+        self._track(result)
+        self.created_names.append(name)
+        self.assertTrue(result["success"])
+        pet_id = result["data"]["pet_id"]
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertEqual(query["data"]["breed"], "虎斑猫")
+        self.assertIsNotNone(query["data"]["vector"])
+
+    @patch('backend.libs.animal_library.detect_species')
+    @patch('backend.libs.animal_library.extract_features')
+    @patch('backend.libs.animal_library.add_animal_to_ai_db')
+    def test_add_animal_with_ai_mock_fallback(self, mock_add_ai, mock_extract, mock_detect):
+        """AI识别失败降级（Mock）：breed='未知', vector=None，但整体仍成功"""
+        mock_detect.return_value = {"success": False}
+        mock_extract.return_value = {"success": False}
+        mock_add_ai.return_value = {"success": True}
+
+        name = f"test_fallback_{uuid.uuid4().hex[:6]}"
+        result = self.lib.add_animal_with_ai(
+            photo_bytes=b"fake_image_bytes",
+            name=name,
+            status=0
+        )
+        self._track(result)
+        self.created_names.append(name)
+        self.assertTrue(result["success"])
+        pet_id = result["data"]["pet_id"]
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertEqual(query["data"]["breed"], "未知")
+        self.assertIsNone(query["data"]["vector"])
+
+    # ==================== 16. search_by_image (Mock) ====================
+
+    @patch('backend.libs.animal_library.identify_animal')
+    @patch('backend.libs.animal_library.extract_features')
+    def test_search_by_image_mock_new(self, mock_extract, mock_identify):
+        """以图搜图：AI判断为新动物，返回空列表"""
+        mock_identify.return_value = {
+            "success": True,
+            "is_new": True,
+            "message": "首次识别"
+        }
+        mock_extract.return_value = {
+            "success": True,
+            "features": [0.1, 0.2, 0.3]
+        }
+        result = self.lib.search_by_image(b"fake")
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["data"]["animals"]), 0)
+
+    @patch('backend.libs.animal_library.identify_animal')
+    @patch('backend.libs.animal_library.extract_features')
+    def test_search_by_image_mock_existing(self, mock_extract, mock_identify):
+        """以图搜图：找到相似动物"""
+        name = f"mock_search_{uuid.uuid4().hex[:6]}"
+        self._add_test_animal(name=name, vector=json.dumps([0.1, 0.2, 0.3]))
+        mock_identify.return_value = {
+            "success": True,
+            "is_new": False,
+            "confidence": 0.85
+        }
+        mock_extract.return_value = {
+            "success": True,
+            "features": [0.1, 0.2, 0.3]
+        }
+        result = self.lib.search_by_image(b"fake")
+        self.assertTrue(result["success"])
+        self.assertGreaterEqual(len(result["data"]["animals"]), 1)
+        self.assertIn("confidence", result["data"])
+
+    # ==================== 17. find_lost_animal (Mock) ====================
+
+    @patch('backend.libs.animal_library.identify_animal')
+    @patch('backend.libs.animal_library.extract_features')
+    def test_find_lost_animal_mock(self, mock_extract, mock_identify):
+        """失踪动物找回（Mock，复用 search_by_image）"""
+        mock_identify.return_value = {
+            "success": True,
+            "is_new": True,
+            "message": "未匹配"
+        }
+        mock_extract.return_value = {
+            "success": True,
+            "features": [0.1, 0.2, 0.3]
+        }
+        result = self.lib.find_lost_animal(b"fake")
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["data"]["animals"]), 0)
+
+
+# ==================== 真实 AI 集成测试（AI 服务未启动则自动跳过） ====================
+
+@unittest.skipUnless(_ai_service_available(), "AI 服务未启动（localhost:8001），跳过真实 AI 测试")
+class TestAnimalLibraryAIReal(unittest.TestCase):
+    """真实 AI 服务集成测试（需提前启动 flask_api）"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = AnimalLibrary()
+        cls._cleanup_all_test_data()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all_test_data()
+
+    def setUp(self):
+        self.created_pet_ids = []
+        self.created_names = []
+
+    def tearDown(self):
+        if self.lib.db.open_database():
+            for pet_id in self.created_pet_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_animal WHERE pet_id = %s", (pet_id,))
+            for name in self.created_names:
+                self.lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name = %s", (name,))
+            self.lib.db.close_database()
+
+    @classmethod
+    def _cleanup_all_test_data(cls):
+        if cls.lib.db.open_database():
+            prefixes = ['real_ai_%', 'real_search_%', 'real_find_%']
+            for prefix in prefixes:
+                cls.lib.db.execute_raw_sql(
+                    "DELETE FROM t_animal WHERE name LIKE %s", (prefix,)
+                )
+            cls.lib.db.close_database()
+
+    def _track(self, result: dict) -> dict:
+        if result.get("success") and result.get("data", {}).get("pet_id"):
+            self.created_pet_ids.append(result["data"]["pet_id"])
+        return result
+
+    # ---------- 真实 AI：添加动物 ----------
+
+    def test_add_animal_with_ai_real_cat(self):
+        """真实 AI：识别虎斑猫"""
+        with open(CAT_IMG, "rb") as f:
+            photo = f.read()
+        name = f"real_ai_cat_{uuid.uuid4().hex[:6]}"
+        result = self.lib.add_animal_with_ai(
+            photo_bytes=photo,
+            name=name,
+            status=0,
+            color="橘色",
+            age=2,
+            gender=1
+        )
+        self._track(result)
+        self.created_names.append(name)
+        self.assertTrue(result["success"], f"AI添加失败：{result}")
+        pet_id = result["data"]["pet_id"]
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertTrue(query["success"])
+        self.assertNotEqual(query["data"]["breed"], "未知")
+        self.assertIsNotNone(query["data"]["vector"])
+        print(f"  [AI识别结果] breed={query['data']['breed']}, vector长度={len(json.loads(query['data']['vector']))}")
+
+    def test_add_animal_with_ai_real_dog(self):
+        """真实 AI：识别金毛寻回犬"""
+        with open(DOG_IMG, "rb") as f:
+            photo = f.read()
+        name = f"real_ai_dog_{uuid.uuid4().hex[:6]}"
+        result = self.lib.add_animal_with_ai(
+            photo_bytes=photo,
+            name=name,
+            status=0
+        )
+        self._track(result)
+        self.created_names.append(name)
+        self.assertTrue(result["success"])
+        pet_id = result["data"]["pet_id"]
+        query = self.lib.get_animal_by_id(pet_id)
+        self.assertNotEqual(query["data"]["breed"], "未知")
+        print(f"  [AI识别结果] breed={query['data']['breed']}, vector长度={len(json.loads(query['data']['vector']))}")
+
+    def test_add_animal_with_ai_real_cheetah(self):
+        """真实 AI：识别猎豹（非猫狗，验证 other 分支）"""
+        with open(CHEETAH_IMG, "rb") as f:
+            photo = f.read()
+        name = f"real_ai_cheetah_{uuid.uuid4().hex[:6]}"
+        result = self.lib.add_animal_with_ai(
+            photo_bytes=photo,
+            name=name,
+            status=0
+        )
+        self._track(result)
+        self.created_names.append(name)
+        self.assertTrue(result["success"])
+        pet_id = result["data"]["pet_id"]
+        query = self.lib.get_animal_by_id(pet_id)
+        print(f"  [猎豹识别结果] breed={query['data']['breed']}")
+
+    # ---------- 真实 AI：以图搜图 ----------
+
+    def test_search_by_image_real(self):
+        """真实 AI：以图搜图"""
+        with open(CAT_IMG, "rb") as f:
+            photo = f.read()
+        name = f"real_search_{uuid.uuid4().hex[:6]}"
+        add_result = self.lib.add_animal_with_ai(photo_bytes=photo, name=name, status=0)
+        self._track(add_result)
+        self.created_names.append(name)
+        self.assertTrue(add_result["success"])
+
+        result = self.lib.search_by_image(photo)
+        self.assertTrue(result["success"])
+        self.assertIn("animals", result["data"])
+        print(f"  [以图搜图] 返回相似动物数：{len(result['data']['animals'])}")
+
+    # ---------- 真实 AI：失踪动物找回 ----------
+
+    def test_find_lost_animal_real(self):
+        """真实 AI：失踪动物找回"""
+        with open(DOG2_IMG, "rb") as f:
+            photo = f.read()
+        result = self.lib.find_lost_animal(photo)
+        self.assertTrue(result["success"])
+        self.assertIn("animals", result["data"])
+        print(f"  [失踪找回] 返回相似动物数：{len(result['data']['animals'])}")
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

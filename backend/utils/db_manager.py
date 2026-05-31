@@ -27,7 +27,21 @@ class DatabaseManager:
     def open_database(self):
         """
         建立数据库连接（对应文档的 openDatabase）
+        如果已有活跃连接则直接复用，避免重复创建
         """
+        # 已有连接且可用，直接复用
+        if self.connection is not None:
+            try:
+                self.connection.ping(reconnect=True)
+                return True
+            except Exception:
+                # 连接已失效，关闭后重新创建
+                try:
+                    self.connection.close()
+                except Exception:
+                    pass
+                self.connection = None
+
         try:
             # 复制默认转换器，将 DECIMAL / NEWDECIMAL 自动转为 float，
             # 避免上层业务代码出现 decimal.Decimal + float 的 TypeError

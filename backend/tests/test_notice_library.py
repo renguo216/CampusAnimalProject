@@ -1,181 +1,239 @@
-# ===== backend/tests/test_notice_library.py =====
+# backend/tests/test_notice_library.py
 """
-测试 NoticeLibrary 所有功能
-运行方式（在项目根目录执行）：
+NoticeLibrary 完整测试套件
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_notice_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_notice 表已存在
 """
-from backend.libs.notice_library import NoticeLibrary
+
+import os
+import sys
+import unittest
 import uuid
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from backend.libs.notice_library import NoticeLibrary
+
+PREFIX = "test_notice_"
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+class TestNoticeLibrary(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = NoticeLibrary()
+        cls._cleanup_all()
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
+    def setUp(self):
+        self.notice_ids = []
 
-def main():
-    notice_lib = NoticeLibrary()
-    db = notice_lib.db
+    def tearDown(self):
+        if not self.notice_ids:
+            return
+        if self.lib.db.open_database():
+            for nid in self.notice_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_notice WHERE notice_id=%s", (nid,))
+            self.lib.db.close_database()
 
-    # ======== 清理旧测试数据 ========
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_notice WHERE title LIKE 'test_notice_%'")
-        db.close_database()
-        print("已清理旧测试数据")
+    @classmethod
+    def _cleanup_all(cls):
+        if cls.lib.db.open_database():
+            cls.lib.db.execute_raw_sql("DELETE FROM t_notice WHERE title LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.close_database()
 
-    print("\n" + "=" * 50 + "\n  开始测试 NoticeLibrary\n" + "=" * 50)
+    def _add_notice(self, **kw) -> str:
+        kw.setdefault("title", f"{PREFIX}{uuid.uuid4().hex[:8]}")
+        kw.setdefault("content", "测试内容")
+        kw.setdefault("is_top", 0)
+        r = self.lib.create_notice(**kw)
+        if not r.get("success"):
+            raise RuntimeError(f"创建公告失败: {r}")
+        nid = r["data"]["notice_id"]
+        self.notice_ids.append(nid)
+        return nid
 
-    # ========== 1. 创建公告 ==========
-    print("\n1. 测试创建公告 (create_notice)...")
+    # ==================== create_notice ====================
 
-    # 1.1 普通公告
-    t1 = f"test_notice_{uuid.uuid4().hex[:8]}"
-    success = notice_lib.create_notice(t1, "普通公告内容", is_top=0)
-    if success:
-        log_pass(f"创建普通公告 {t1}", "成功")
-    else:
-        log_fail("创建普通公告", "失败")
+    def test_create_normal(self):
+        r = self.lib.create_notice(f"{PREFIX}普通", "内容", is_top=0)
+        self.assertTrue(r["success"])
+        self.assertIn("notice_id", r["data"])
 
-    # 1.2 置顶公告
-    t2 = f"test_notice_{uuid.uuid4().hex[:8]}"
-    success = notice_lib.create_notice(t2, "置顶公告内容", is_top=1)
-    if success:
-        log_pass(f"创建置顶公告 {t2}", "成功")
-    else:
-        log_fail("创建置顶公告", "失败")
+    def test_create_top(self):
+        r = self.lib.create_notice(f"{PREFIX}置顶", "内容", is_top=1)
+        self.assertTrue(r["success"])
+        self.notice_ids.append(r["data"]["notice_id"])
 
-    # 1.3 空标题
-    if not notice_lib.create_notice("", "内容"):
-        log_pass("空标题", "返回 False")
-    else:
-        log_fail("空标题", "返回 True")
+    def test_create_empty_title(self):
+        self.assertFalse(self.lib.create_notice("", "内容")["success"])
+        self.assertFalse(self.lib.create_notice("   ", "内容")["success"])
 
-    # ========== 2. 获取所有公告（分页 + 置顶优先） ==========
-    print("\n2. 测试获取所有公告 (get_all_notices)...")
-    result = notice_lib.get_all_notices(page=1, page_size=10)
-    if result["total"] >= 2:
-        log_pass("获取公告列表", f"total={result['total']}")
-        # 验证置顶排在最前
-        if result["notices"][0].is_top == 1:
-            log_pass("置顶优先排序", "第一条是置顶")
-        else:
-            log_fail("置顶优先排序", "第一条不是置顶")
-    else:
-        log_fail("获取公告列表", f"total={result['total']}")
+    # ==================== get_notice_by_id ====================
 
-    # 分页测试
-    result = notice_lib.get_all_notices(page=1, page_size=1)
-    if len(result["notices"]) == 1:
-        log_pass("分页 limit=1", "返回1条")
-    else:
-        log_fail("分页 limit=1", f"返回{len(result['notices'])}条")
+    def test_get_by_id_success(self):
+        nid = self._add_notice(title="详情测试")
+        d = self.lib.get_notice_by_id(nid)["data"]
+        self.assertEqual(d["notice_id"], nid)
+        self.assertEqual(d["title"], "详情测试")
+        for f in ["notice_id", "title", "content", "is_top", "created_at"]:
+            self.assertIn(f, d)
 
-    # ========== 3. 获取最新公告 ==========
-    print("\n3. 测试获取最新公告 (get_latest_notice)...")
-    latest = notice_lib.get_latest_notice()
-    if latest and latest.is_top == 1:
-        log_pass("获取最新公告", f"置顶公告 {latest.title}")
-    else:
-        log_fail("获取最新公告", f"is_top={latest.is_top if latest else 'None'}")
+    def test_get_by_id_not_exists(self):
+        self.assertFalse(self.lib.get_notice_by_id("no_xxx")["success"])
 
-    # ========== 4. 按ID查询 ==========
-    print("\n4. 测试按ID查询 (get_notice_by_id)...")
-    all_result = notice_lib.get_all_notices(page=1, page_size=10)
-    if all_result["notices"]:
-        nid = all_result["notices"][0].notice_id
-        notice = notice_lib.get_notice_by_id(nid)
-        if notice and notice.notice_id == nid:
-            log_pass(f"查询存在公告 {nid}", "成功")
-        else:
-            log_fail("查询存在公告", "失败")
+    # ==================== get_all_notices ====================
 
-    none_notice = notice_lib.get_notice_by_id("not_exist")
-    if none_notice is None:
-        log_pass("查询不存在公告", "返回 None")
-    else:
-        log_fail("查询不存在公告", "返回非空")
+    def test_get_all_success(self):
+        self._add_notice()
+        r = self.lib.get_all_notices()
+        self.assertTrue(r["success"])
+        self.assertGreaterEqual(r["data"]["total"], 1)
+        self.assertIn("notices", r["data"])
 
-    # ========== 5. 更新公告 ==========
-    print("\n5. 测试更新公告 (update_notice)...")
-    if all_result["notices"]:
-        nid = all_result["notices"][0].notice_id
-        # 更新标题和内容
-        success = notice_lib.update_notice(nid, title="更新后标题", content="更新后内容")
-        if success:
-            updated = notice_lib.get_notice_by_id(nid)
-            if updated.title == "更新后标题" and updated.content == "更新后内容":
-                log_pass("更新标题和内容", "验证成功")
-            else:
-                log_fail("更新标题和内容", f"title={updated.title}, content={updated.content}")
-        else:
-            log_fail("更新标题和内容", "返回 False")
+    def test_get_all_top_first(self):
+        self._add_notice(title="普通A", is_top=0)
+        self._add_notice(title="置顶B", is_top=1)
+        notices = self.lib.get_all_notices()["data"]["notices"]
+        self.assertEqual(notices[0]["is_top"], 1)
 
-        # 更新置顶状态
-        success = notice_lib.update_notice(nid, is_top=1)
-        if success:
-            updated = notice_lib.get_notice_by_id(nid)
-            if updated.is_top == 1:
-                log_pass("更新置顶状态", "is_top=1")
-            else:
-                log_fail("更新置顶状态", f"is_top={updated.is_top}")
-        else:
-            log_fail("更新置顶状态", "返回 False")
+    def test_get_all_pagination(self):
+        for _ in range(3):
+            self._add_notice()
+        self.assertEqual(len(self.lib.get_all_notices(1, 2)["data"]["notices"]), 2)
+        self.assertGreaterEqual(len(self.lib.get_all_notices(2, 2)["data"]["notices"]), 1)
 
-        # 空标题
-        if not notice_lib.update_notice(nid, title=""):
-            log_pass("更新空标题", "返回 False")
-        else:
-            log_fail("更新空标题", "返回 True")
+    def test_get_all_order_by(self):
+        if self.lib.db.open_database():
+            self.lib.db.execute_raw_sql("DELETE FROM t_notice")
+            self.lib.db.close_database()
+        self._add_notice(title="AAA", is_top=0)
+        self._add_notice(title="ZZZ", is_top=0)
+        asc = self.lib.get_all_notices(order_by="title ASC")["data"]["notices"]
+        self.assertLessEqual(asc[0]["title"], asc[1]["title"])
+    # ==================== get_latest_notice ====================
 
-    # 更新不存在
-    if not notice_lib.update_notice("not_exist", title="test"):
-        log_pass("更新不存在公告", "返回 False")
-    else:
-        log_fail("更新不存在公告", "返回 True")
+    def test_latest_returns_top(self):
+        self._add_notice(title="普通", is_top=0)
+        top_id = self._add_notice(title="置顶最新", is_top=1)
+        d = self.lib.get_latest_notice()["data"]
+        self.assertEqual(d["notice_id"], top_id)
+        self.assertEqual(d["is_top"], 1)
 
-    # ========== 6. 搜索公告 ==========
-    print("\n6. 测试搜索公告 (search_notices_by_title)...")
-    result = notice_lib.search_notices_by_title("更新后", page=1, page_size=10)
-    if result["total"] >= 1:
-        log_pass("搜索'更新后'", f"total={result['total']}")
-    else:
-        log_fail("搜索'更新后'", f"total={result['total']}")
+    def test_latest_fallback_to_normal(self):
+        if self.lib.db.open_database():
+            self.lib.db.execute_raw_sql("DELETE FROM t_notice")
+            self.lib.db.close_database()
+        nid = self._add_notice(title="没有置顶时取我", is_top=0)
+        d = self.lib.get_latest_notice()["data"]
+        self.assertEqual(d["notice_id"], nid)
 
-    result = notice_lib.search_notices_by_title("火星", page=1, page_size=10)
-    if result["total"] == 0:
-        log_pass("搜索'火星'", "返回空")
-    else:
-        log_fail("搜索'火星'", f"total={result['total']}")
+    def test_latest_no_notices(self):
+        if self.lib.db.open_database():
+            self.lib.db.execute_raw_sql("DELETE FROM t_notice")
+            self.lib.db.close_database()
+        self.assertFalse(self.lib.get_latest_notice()["success"])
 
-    # ========== 7. 删除公告 ==========
-    print("\n7. 测试删除公告 (delete_notice)...")
-    if all_result["notices"]:
-        nid = all_result["notices"][-1].notice_id
-        success = notice_lib.delete_notice(nid)
-        if success and notice_lib.get_notice_by_id(nid) is None:
-            log_pass(f"删除公告 {nid}", "成功")
-        else:
-            log_fail("删除公告", "失败或仍存在")
+    # ==================== update_notice ====================
 
-    if not notice_lib.delete_notice("not_exist"):
-        log_pass("删除不存在公告", "返回 False")
-    else:
-        log_fail("删除不存在公告", "返回 True")
+    def test_update_title_and_content(self):
+        nid = self._add_notice()
+        self.lib.update_notice(nid, title="新标题", content="新内容")
+        d = self.lib.get_notice_by_id(nid)["data"]
+        self.assertEqual(d["title"], "新标题")
+        self.assertEqual(d["content"], "新内容")
 
-    # ========== 8. 清理 ==========
-    print("\n8. 清理测试数据...")
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_notice WHERE title LIKE 'test_notice_%'")
-        db.close_database()
-        log_pass("清理数据", "完成")
-    else:
-        log_fail("清理数据", "连接失败")
+    def test_update_is_top(self):
+        nid = self._add_notice(is_top=0)
+        self.lib.update_notice(nid, is_top=1)
+        self.assertEqual(self.lib.get_notice_by_id(nid)["data"]["is_top"], 1)
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    def test_update_empty_title(self):
+        nid = self._add_notice()
+        self.assertFalse(self.lib.update_notice(nid, title="")["success"])
+        self.assertFalse(self.lib.update_notice(nid, title="  ")["success"])
+
+    def test_update_not_exists(self):
+        self.assertFalse(self.lib.update_notice("no_xxx", title="x")["success"])
+
+    def test_update_no_fields(self):
+        nid = self._add_notice()
+        self.assertFalse(self.lib.update_notice(nid)["success"])
+        self.assertIn("没有需要更新", self.lib.update_notice(nid)["message"])
+
+    # ==================== search_notices_by_title ====================
+
+    def test_search_success(self):
+        self._add_notice(title="可搜索的目标")
+        self.assertGreaterEqual(self.lib.search_notices_by_title("可搜索")["data"]["total"], 1)
+
+    def test_search_not_found(self):
+        self.assertEqual(self.lib.search_notices_by_title("不存在xyz123")["data"]["total"], 0)
+
+    def test_search_pagination(self):
+        for _ in range(3):
+            self._add_notice(title="分页搜索")
+        self.assertEqual(len(self.lib.search_notices_by_title("分页搜索", 1, 2)["data"]["notices"]), 2)
+
+    # ==================== delete_notice ====================
+
+    def test_delete_success(self):
+        nid = self._add_notice()
+        self.assertTrue(self.lib.delete_notice(nid)["success"])
+        self.assertFalse(self.lib.get_notice_by_id(nid)["success"])
+        self.notice_ids.remove(nid)
+
+    def test_delete_not_exists(self):
+        self.assertFalse(self.lib.delete_notice("no_xxx")["success"])
+
+    # ==================== DB 连接失败批量覆盖 ====================
+
+    def test_db_connection_fail(self):
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.create_notice("t", "c")["success"])
+            self.assertFalse(self.lib.get_notice_by_id("x")["success"])
+            self.assertFalse(self.lib.get_all_notices()["success"])
+            self.assertFalse(self.lib.get_latest_notice()["success"])
+            self.assertFalse(self.lib.update_notice("x", title="t")["success"])
+            self.assertFalse(self.lib.search_notices_by_title("x")["success"])
+            self.assertFalse(self.lib.delete_notice("x")["success"])
+
+    # ==================== 综合场景 ====================
+
+    def test_full_lifecycle(self):
+        """创建 -> 查询 -> 更新 -> 搜索 -> 删除"""
+        nid = self._add_notice(title="生命周期", content="原始内容", is_top=0)
+        d = self.lib.get_notice_by_id(nid)["data"]
+        self.assertEqual(d["title"], "生命周期")
+
+        self.lib.update_notice(nid, title="已更新", is_top=1)
+        self.assertEqual(self.lib.get_notice_by_id(nid)["data"]["is_top"], 1)
+        self.assertGreaterEqual(self.lib.search_notices_by_title("已更新")["data"]["total"], 1)
+
+        self.lib.delete_notice(nid)
+        self.assertFalse(self.lib.get_notice_by_id(nid)["success"])
+        self.notice_ids.remove(nid)
+
+    def test_top_always_first(self):
+        """多条公告混合置顶/普通，置顶始终在前"""
+        self._add_notice(title="普通1", is_top=0)
+        self._add_notice(title="置顶1", is_top=1)
+        self._add_notice(title="普通2", is_top=0)
+        self._add_notice(title="置顶2", is_top=1)
+        notices = self.lib.get_all_notices()["data"]["notices"]
+        # 前两条都应是置顶
+        self.assertEqual(notices[0]["is_top"], 1)
+        self.assertEqual(notices[1]["is_top"], 1)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

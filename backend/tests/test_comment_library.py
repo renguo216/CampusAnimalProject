@@ -1,245 +1,402 @@
-# ===== backend/tests/test_comment_library.py =====
+# backend/tests/test_comment_library.py
 """
-测试 CommentLibrary 所有功能
-运行方式（在项目根目录执行）：
+CommentLibrary 完整测试套件
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_comment_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_user、t_post、t_comment、t_like 表已存在
 """
+
+import os
+import sys
+import unittest
+import uuid
+from datetime import datetime
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from backend.libs.comment_library import CommentLibrary
 from backend.libs.post_library import PostLibrary
 from backend.libs.user_library import UserLibrary
-import uuid
+
+PREFIX = "test_cmt_"
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+class TestCommentLibrary(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = CommentLibrary()
+        cls.post_lib = PostLibrary()
+        cls.user_lib = UserLibrary()
+        cls._cleanup_all()
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
+    def setUp(self):
+        self.user_ids = []
+        self.post_ids = []
+        self.comment_ids = []
 
-def main():
-    comment_lib = CommentLibrary()
-    post_lib = PostLibrary()
-    user_lib = UserLibrary()
+    def tearDown(self):
+        if not (self.user_ids or self.post_ids):
+            return
+        if self.lib.db.open_database():
+            for cid in self.comment_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_like WHERE target_id=%s", (str(cid),))
+            for pid in self.post_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_comment WHERE post_id=%s", (pid,))
+                self.lib.db.execute_raw_sql("DELETE FROM t_post WHERE post_id=%s", (pid,))
+            for uid in self.user_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id=%s", (uid,))
+            self.lib.db.close_database()
 
-    # ======== 清理旧测试数据 ========
-    if comment_lib.db.open_database():
-        # 删除所有测试评论（关联的点赞会级联删除）
-        comment_lib.db.execute_raw_sql("DELETE FROM t_comment WHERE user_id LIKE 'test_comment_user_%'")
-        # 删除测试帖子
-        comment_lib.db.execute_raw_sql("DELETE FROM t_post WHERE user_id LIKE 'test_comment_user_%'")
-        # 删除测试用户
-        comment_lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_comment_user_%'")
-        comment_lib.db.close_database()
-        print("已清理旧测试数据")
-    # =================================
+    @classmethod
+    def _cleanup_all(cls):
+        if cls.lib.db.open_database():
+            cls.lib.db.execute_raw_sql("DELETE FROM t_like WHERE user_id LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.execute_raw_sql("DELETE FROM t_comment WHERE user_id LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.execute_raw_sql("DELETE FROM t_post WHERE user_id LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.close_database()
 
-    # ======== 准备测试数据 ========
-    test_user1_id = f"test_comment_user_{uuid.uuid4().hex[:6]}"
-    test_user2_id = f"test_comment_user_{uuid.uuid4().hex[:6]}"
-    test_admin_id = f"test_comment_user_{uuid.uuid4().hex[:6]}"
-    test_nickname1 = "评论人A"
-    test_nickname2 = "评论人B"
-    test_admin_nickname = "管理员"
+    # ---- 辅助 ----
 
-    print("\n" + "=" * 50 + "\n  开始测试 CommentLibrary\n" + "=" * 50)
+    def _add_user(self, role=1) -> str:
+        uid = f"{PREFIX}user_{uuid.uuid4().hex[:8]}"
+        self.user_lib.register_user(uid, f"测试_{uuid.uuid4().hex[:6]}", role=role)
+        self.user_ids.append(uid)
+        return uid
 
-    # 0. 准备测试用户
-    print("\n0. 准备测试用户...")
-    user_lib.register_user(test_user1_id, test_nickname1, role=1)
-    user_lib.register_user(test_user2_id, test_nickname2, role=1)
-    user_lib.register_user(test_admin_id, test_admin_nickname, role=3)  # 管理员
-    log_pass("注册测试用户", f"user1={test_user1_id}, user2={test_user2_id}, admin={test_admin_id}")
+    def _add_post(self, user_id=None) -> str:
+        uid = user_id or self._add_user()
+        r = self.post_lib.create_post(uid, "测试帖子内容")
+        if not r.get("success"):
+            raise RuntimeError(f"创建帖子失败: {r}")
+        pid = r["data"]["post_id"]
+        self.post_ids.append(pid)
+        return pid
 
-    # 准备测试帖子
-    post_result = post_lib.create_post(test_user1_id, "测试帖子内容")
-    test_post_id = post_result["data"]["post_id"] if post_result["success"] else None
-    if not test_post_id:
-        print("错误：帖子创建失败，测试终止")
-        return
-    log_pass("创建测试帖子", f"post_id={test_post_id}")
+    def _add_comment(self, post_id, user_id=None, content="测试评论", parent_id=None) -> int:
+        uid = user_id or self._add_user()
+        r = self.lib.create_comment(post_id, uid, content, parent_id)
+        if r.get("success"):
+            self.comment_ids.append(r["data"]["comment_id"])
+        return r
 
-    # ========== 1. 创建评论 ==========
-    print("\n1. 测试创建评论 (create_comment)...")
-    # 1.1 正常创建评论
-    content1 = "好可爱的猫！"
-    comment1 = comment_lib.create_comment(test_post_id, test_user2_id, content1)
-    if comment1 and comment1.comment_id:
-        log_pass(f"用户2对帖子发表评论，content='{content1}'", f"comment_id={comment1.comment_id}")
-        test_comment_id = comment1.comment_id
-    else:
-        log_fail("用户2对帖子发表评论", "返回 False")
-        test_comment_id = None
+    # ==================== create_comment ====================
 
-    # 1.2 创建楼中楼回复
-    reply_content = "真的吗？在哪里看到的？"
-    reply = comment_lib.reply_comment(test_post_id, test_user1_id, reply_content, test_comment_id)
-    if reply and reply.comment_id:
-        log_pass(f"用户1回复评论，parent_comment_id={test_comment_id}", f"reply_comment_id={reply.comment_id}")
-        test_reply_id = reply.comment_id
-    else:
-        log_fail("用户1回复评论", "返回 False")
-        test_reply_id = None
+    def test_create_success(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        self.assertTrue(r["success"])
+        self.assertIsNotNone(r["data"]["comment_id"])
+        self.assertEqual(r["data"]["post_id"], pid)
+        self.assertEqual(r["data"]["like_count"], 0)
 
-    # 1.3 失败场景：帖子不存在
-    invalid_comment = comment_lib.create_comment("non_exist_post", test_user2_id, "测试")
-    if not invalid_comment:
-        log_pass("对不存在的帖子发表评论", "返回 False")
-    else:
-        log_fail("对不存在的帖子发表评论", f"返回 {invalid_comment}，预期 False")
+    def test_create_reply(self):
+        pid = self._add_post()
+        parent = self._add_comment(pid)
+        r = self._add_comment(pid, content="回复内容", parent_id=parent["data"]["comment_id"])
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["parent_comment_id"], parent["data"]["comment_id"])
 
-    # 1.4 失败场景：父评论不属于同一帖子
-    wrong_parent = comment_lib.create_comment(test_post_id, test_user2_id, "错误回复", parent_comment_id=999999)
-    if not wrong_parent:
-        log_pass("父评论不属于当前帖子", "返回 False")
-    else:
-        log_fail("父评论不属于当前帖子", f"返回 {wrong_parent}，预期 False")
+    def test_create_empty_params(self):
+        pid = self._add_post()
+        self.assertFalse(self.lib.create_comment("", "u", "c")["success"])
+        self.assertFalse(self.lib.create_comment(pid, "", "c")["success"])
+        self.assertFalse(self.lib.create_comment(pid, "u", "")["success"])
 
-    # ========== 2. 查询评论 ==========
-    print("\n2. 测试查询评论 (get_comment_by_id)...")
-    # 2.1 查询存在的评论
-    comment = comment_lib.get_comment_by_id(test_comment_id)
-    if comment and comment.comment_id == test_comment_id:
-        log_pass(f"按ID查询评论，comment_id={test_comment_id}", f"content='{comment.content}'")
-    else:
-        log_fail(f"按ID查询评论，comment_id={test_comment_id}", f"返回 {comment}，预期非None")
+    def test_create_post_not_exists(self):
+        self.assertFalse(self.lib.create_comment("no_post", self._add_user(), "c")["success"])
 
-    # 2.2 查询不存在的评论
-    none_comment = comment_lib.get_comment_by_id(999999)
-    if none_comment is None:
-        log_pass("查询不存在的评论", "返回 None")
-    else:
-        log_fail("查询不存在的评论", f"返回 {none_comment}，预期 None")
+    def test_create_parent_not_exists(self):
+        pid = self._add_post()
+        r = self.lib.create_comment(pid, self._add_user(), "c", parent_comment_id=999999)
+        self.assertFalse(r["success"])
+        self.assertIn("父评论", r["message"])
 
-    # ========== 3. 获取帖子评论列表 ==========
-    print("\n3. 测试获取帖子评论列表 (get_post_comments)...")
-    # 3.1 正常获取（应包含2条评论：一条顶级评论，一条回复）
-    comments = comment_lib.get_post_comments(test_post_id, page=1, page_size=10)
-    if len(comments) >= 2:
-        log_pass(f"获取帖子评论列表，post_id={test_post_id}", f"返回 {len(comments)} 条评论")
-    else:
-        log_fail(f"获取帖子评论列表，post_id={test_post_id}", f"返回 {len(comments)} 条评论，预期 >=2")
+    # ==================== reply_comment ====================
 
-    # 3.2 分页测试
-    page1 = comment_lib.get_post_comments(test_post_id, page=1, page_size=1)
-    if len(page1) == 1:
-        log_pass("分页获取第1页，page_size=1", f"返回 {len(page1)} 条评论")
-    else:
-        log_fail("分页获取第1页，page_size=1", f"返回 {len(page1)} 条，预期1条")
+    def test_reply_delegates_to_create(self):
+        pid = self._add_post()
+        parent = self._add_comment(pid)
+        r = self.lib.reply_comment(pid, self._add_user(), "回复", parent["data"]["comment_id"])
+        self.assertTrue(r["success"])
 
-    # ========== 4. 获取评论回复列表 ==========
-    print("\n4. 测试获取评论回复列表 (get_comment_replies)...")
-    replies = comment_lib.get_comment_replies(test_comment_id)
-    if len(replies) >= 1:
-        log_pass(f"获取父评论 {test_comment_id} 的回复", f"返回 {len(replies)} 条回复")
-    else:
-        log_fail(f"获取父评论 {test_comment_id} 的回复", f"返回 {len(replies)} 条回复，预期 >=1")
+    # ==================== get_comment_by_id ====================
 
-    # ========== 5. 获取用户评论历史 ==========
-    print("\n5. 测试获取用户评论历史 (get_user_comments)...")
-    user_comments = comment_lib.get_user_comments(test_user2_id, page=1, page_size=10)
-    if len(user_comments) >= 1:
-        log_pass(f"获取用户 {test_user2_id} 的评论历史", f"返回 {len(user_comments)} 条记录")
-    else:
-        log_fail(f"获取用户 {test_user2_id} 的评论历史", f"返回 {len(user_comments)} 条，预期 >=1")
+    def test_get_by_id_success(self):
+        pid = self._add_post()
+        r = self._add_comment(pid, content="查我")
+        d = self.lib.get_comment_by_id(r["data"]["comment_id"])["data"]
+        self.assertEqual(d["content"], "查我")
+        self.assertEqual(d["post_id"], pid)
+        for f in ["comment_id", "post_id", "user_id", "content", "parent_comment_id", "like_count", "created_at"]:
+            self.assertIn(f, d)
 
-    # ========== 6. 切换评论点赞 ==========
-    print("\n6. 测试切换评论点赞 (toggle_comment_like)...")
-    # 6.1 点赞（当前未点赞）
-    like_result = comment_lib.toggle_comment_like(test_comment_id, test_user1_id)
-    if like_result is True:
-        log_pass("用户1点赞评论", f"返回 {like_result}（True）")
-    else:
-        log_fail("用户1点赞评论", f"返回 {like_result}，预期 True")
+    def test_get_by_id_not_exists(self):
+        self.assertFalse(self.lib.get_comment_by_id(999999)["success"])
 
-    # 6.2 取消点赞（已点赞）
-    unlike_result = comment_lib.toggle_comment_like(test_comment_id, test_user1_id)
-    if unlike_result is False:
-        log_pass("用户1取消点赞", f"返回 {unlike_result}（False）")
-    else:
-        log_fail("用户1取消点赞", f"返回 {unlike_result}，预期 False")
+    def test_get_by_id_empty(self):
+        self.assertFalse(self.lib.get_comment_by_id(None)["success"])
 
-    # 6.3 对不存在的评论点赞
-    none_like = comment_lib.toggle_comment_like(999999, test_user1_id)
-    if none_like is None:
-        log_pass("对不存在的评论点赞", f"返回 None")
-    else:
-        log_fail("对不存在的评论点赞", f"返回 {none_like}，预期 None")
+    # ==================== get_post_comments ====================
 
-    # ========== 7. 删除评论（普通用户） ==========
-    print("\n7. 测试删除评论 (delete_comment)...")
-    # 7.1 删除自己的评论
-    if test_comment_id:
-        del_result = comment_lib.delete_comment(test_comment_id, test_user2_id)
-        if del_result:
-            log_pass(f"用户2删除自己的评论", f"返回 True")
-        else:
-            log_fail(f"用户2删除自己的评论", f"返回 False")
+    def test_get_post_comments_success(self):
+        pid = self._add_post()
+        for _ in range(3):
+            self._add_comment(pid)
+        r = self.lib.get_post_comments(pid)
+        self.assertEqual(r["data"]["total"], 3)
+        self.assertEqual(len(r["data"]["comments"]), 3)
 
-    # 7.2 删除别人的评论（应失败）
-    if test_reply_id:
-        del_other = comment_lib.delete_comment(test_reply_id, test_user2_id)
-        if not del_other:
-            log_pass(f"用户2删除用户1的评论", f"返回 False")
-        else:
-            log_fail(f"用户2删除用户1的评论", f"返回 True，预期 False")
+    def test_get_post_comments_empty(self):
+        self.assertEqual(self.lib.get_post_comments("no_post")["data"]["total"], 0)
 
-    # 7.3 删除不存在的评论
-    del_none = comment_lib.delete_comment(999999, test_user1_id)
-    if not del_none:
-        log_pass("删除不存在的评论", "返回 False")
-    else:
-        log_fail("删除不存在的评论", "返回 True，预期 False")
+    def test_get_post_comments_pagination(self):
+        pid = self._add_post()
+        for _ in range(3):
+            self._add_comment(pid)
+        self.assertEqual(len(self.lib.get_post_comments(pid, 1, 2)["data"]["comments"]), 2)
+        self.assertGreaterEqual(len(self.lib.get_post_comments(pid, 2, 2)["data"]["comments"]), 1)
 
-    # ========== 8. 测试管理员删除评论 ==========
-    print("\n8. 测试管理员删除评论 (admin_delete_comment)...")
+    def test_get_post_comments_order_asc(self):
+        pid = self._add_post()
+        self._add_comment(pid, content="先")
+        self._add_comment(pid, content="后")
+        apps = self.lib.get_post_comments(pid)["data"]["comments"]
+        self.assertLessEqual(
+            datetime.strptime(apps[0]["created_at"], "%Y-%m-%d %H:%M:%S"),
+            datetime.strptime(apps[1]["created_at"], "%Y-%m-%d %H:%M:%S")
+        )
 
-    # --- 修复方案：创建一个全新的临时评论用于此测试，避免被之前的测试级联删除 ---
-    temp_comment = comment_lib.create_comment(test_post_id, test_user1_id, "这是管理员要删除的临时评论")
-    if temp_comment:
-        temp_comment_id = temp_comment.comment_id
-    else:
-        log_fail("创建用于管理员删除测试的临时评论失败", "返回 False")
-        temp_comment_id = None
+    def test_get_post_comments_empty_param(self):
+        self.assertFalse(self.lib.get_post_comments("")["success"])
 
-    # 8.1 管理员正常删除
-    if temp_comment_id:
-        admin_del_result = comment_lib.admin_delete_comment(temp_comment_id, test_admin_id)
-        if admin_del_result:
-            log_pass(f"管理员删除评论 {temp_comment_id}", f"返回 True")
-        else:
-            log_fail(f"管理员删除评论 {temp_comment_id}", f"返回 False，预期 True")
-    # ----------------------------------------------------------------
+    # ==================== get_user_comments ====================
 
-    # 8.2 管理员删除不存在的评论
-    admin_del_none = comment_lib.admin_delete_comment(999999, test_admin_id)
-    if not admin_del_none:
-        log_pass("管理员删除不存在的评论", "返回 False")
-    else:
-        log_fail("管理员删除不存在的评论", "返回 True，预期 False")
+    def test_get_user_comments_success(self):
+        uid = self._add_user()
+        for _ in range(2):
+            self._add_comment(self._add_post(uid), uid)
+        r = self.lib.get_user_comments(uid)
+        self.assertEqual(r["data"]["total"], 2)
 
-    # 8.3 非管理员使用管理员删除接口（应失败）
-    non_admin_del = comment_lib.admin_delete_comment(test_reply_id, test_user1_id)
-    if not non_admin_del:
-        log_pass("非管理员调用管理员删除接口", "返回 False")
-    else:
-        log_fail("非管理员调用管理员删除接口", "返回 True，预期 False")
-    
-    # ========== 9. 清理测试数据 ==========
-    print("\n9. 清理测试数据...")
-    if comment_lib.db.open_database():
-        # 清理评论（外键级联删除点赞）
-        comment_lib.db.execute_raw_sql("DELETE FROM t_comment WHERE user_id LIKE 'test_comment_user_%'")
-        comment_lib.db.execute_raw_sql("DELETE FROM t_post WHERE user_id LIKE 'test_comment_user_%'")
-        comment_lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_comment_user_%'")
-        comment_lib.db.close_database()
-        log_pass("清理测试数据", f"删除所有 test_comment_user_* 数据")
-    else:
-        log_fail("清理测试数据", "数据库连接失败，请手动删除")
+    def test_get_user_comments_empty(self):
+        self.assertEqual(self.lib.get_user_comments("no_user")["data"]["total"], 0)
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    def test_get_user_comments_pagination(self):
+        uid = self._add_user()
+        for _ in range(3):
+            self._add_comment(self._add_post(uid), uid)
+        self.assertEqual(len(self.lib.get_user_comments(uid, 1, 2)["data"]["comments"]), 2)
+
+    def test_get_user_comments_order_desc(self):
+        uid = self._add_user()
+        self._add_comment(self._add_post(uid), uid, content="先")
+        self._add_comment(self._add_post(uid), uid, content="后")
+        apps = self.lib.get_user_comments(uid)["data"]["comments"]
+        self.assertGreaterEqual(
+            datetime.strptime(apps[0]["created_at"], "%Y-%m-%d %H:%M:%S"),
+            datetime.strptime(apps[1]["created_at"], "%Y-%m-%d %H:%M:%S")
+        )
+
+    def test_get_user_comments_empty_param(self):
+        self.assertFalse(self.lib.get_user_comments("")["success"])
+    # ==================== get_comment_replies ====================
+
+    def test_get_replies_success(self):
+        pid = self._add_post()
+        parent = self._add_comment(pid)
+        for _ in range(2):
+            self._add_comment(pid, content="回复", parent_id=parent["data"]["comment_id"])
+        r = self.lib.get_comment_replies(parent["data"]["comment_id"])
+        self.assertEqual(len(r["data"]["replies"]), 2)
+
+    def test_get_replies_empty(self):
+        self.assertEqual(len(self.lib.get_comment_replies(999999)["data"]["replies"]), 0)
+
+    def test_get_replies_empty_param(self):
+        self.assertFalse(self.lib.get_comment_replies(None)["success"])
+
+    # ==================== toggle_comment_like ====================
+
+    def test_like_then_unlike(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        cid = r["data"]["comment_id"]
+        uid = r["data"]["user_id"]
+
+        liker = self._add_user()
+        r1 = self.lib.toggle_comment_like(cid, liker)
+        self.assertTrue(r1["success"])
+        self.assertTrue(r1["data"]["is_liked"])
+
+        r2 = self.lib.toggle_comment_like(cid, liker)
+        self.assertTrue(r2["success"])
+        self.assertFalse(r2["data"]["is_liked"])
+
+    def test_like_comment_not_exists(self):
+        self.assertFalse(self.lib.toggle_comment_like(999999, self._add_user())["success"])
+
+    def test_like_empty_params(self):
+        self.assertFalse(self.lib.toggle_comment_like(None, "u")["success"])
+        self.assertFalse(self.lib.toggle_comment_like(1, "")["success"])
+
+    # ==================== check_user_liked_post / comment ====================
+
+    def test_check_liked_post(self):
+        pid = self._add_post()
+        uid = self._add_user()
+        r = self.lib.check_user_liked_post(uid, pid)
+        self.assertTrue(r["success"])
+        self.assertFalse(r["data"]["is_liked"])
+
+    def test_check_liked_comment(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        uid = self._add_user()
+        r2 = self.lib.check_user_liked_comment(uid, r["data"]["comment_id"])
+        self.assertTrue(r2["success"])
+        self.assertFalse(r2["data"]["is_liked"])
+
+    # ==================== delete_comment ====================
+
+    def test_delete_own_success(self):
+        pid = self._add_post()
+        uid = self._add_user()
+        r = self._add_comment(pid, uid)
+        cid = r["data"]["comment_id"]
+        dr = self.lib.delete_comment(cid, uid)
+        self.assertTrue(dr["success"])
+        self.assertFalse(self.lib.get_comment_by_id(cid)["success"])
+
+    def test_delete_other_fail(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        self.assertFalse(self.lib.delete_comment(r["data"]["comment_id"], self._add_user())["success"])
+        self.assertIn("无权", self.lib.delete_comment(r["data"]["comment_id"], self._add_user())["message"])
+
+    def test_delete_not_exists(self):
+        self.assertFalse(self.lib.delete_comment(999999, self._add_user())["success"])
+
+    def test_delete_empty_params(self):
+        self.assertFalse(self.lib.delete_comment(None, "u")["success"])
+        self.assertFalse(self.lib.delete_comment(1, "")["success"])
+
+    # ==================== admin_delete_comment ====================
+
+    def test_admin_delete_success(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        admin = self._add_user(role=3)
+        dr = self.lib.admin_delete_comment(r["data"]["comment_id"], admin)
+        self.assertTrue(dr["success"])
+        self.assertFalse(self.lib.get_comment_by_id(r["data"]["comment_id"])["success"])
+
+    def test_admin_delete_not_exists(self):
+        admin = self._add_user(role=3)
+        self.assertFalse(self.lib.admin_delete_comment(999999, admin)["success"])
+
+    def test_admin_delete_not_admin(self):
+        pid = self._add_post()
+        r = self._add_comment(pid)
+        self.assertFalse(self.lib.admin_delete_comment(r["data"]["comment_id"], self._add_user())["success"])
+        self.assertIn("仅管理员", self.lib.admin_delete_comment(r["data"]["comment_id"], self._add_user())["message"])
+
+    def test_admin_delete_empty_params(self):
+        self.assertFalse(self.lib.admin_delete_comment(None, "u")["success"])
+        self.assertFalse(self.lib.admin_delete_comment(1, "")["success"])
+
+    # ==================== DB 连接失败批量覆盖 ====================
+
+    def test_db_connection_fail(self):
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.create_comment("p", "u", "c")["success"])
+            self.assertFalse(self.lib.delete_comment(1, "u")["success"])
+            self.assertFalse(self.lib.admin_delete_comment(1, "u")["success"])
+            self.assertFalse(self.lib.get_post_comments("p")["success"])
+            self.assertFalse(self.lib.get_user_comments("u")["success"])
+            self.assertFalse(self.lib.get_comment_replies(1)["success"])
+            self.assertFalse(self.lib.toggle_comment_like(1, "u")["success"])
+            self.assertFalse(self.lib.check_user_liked_post("u", "p")["success"])
+            self.assertFalse(self.lib.check_user_liked_comment("u", 1)["success"])
+
+    # ==================== 综合场景 ====================
+
+    def test_full_lifecycle(self):
+        """发帖 -> 评论 -> 回复 -> 点赞 -> 取消赞 -> 删回复 -> 删评论"""
+        uid = self._add_user()
+        other = self._add_user()
+        pid = self._add_post(uid)
+
+        # 评论
+        c1 = self._add_comment(pid, uid, "顶级评论")
+        self.assertTrue(c1["success"])
+
+        # 回复
+        c2 = self._add_comment(pid, other, "回复", c1["data"]["comment_id"])
+        self.assertTrue(c2["success"])
+
+        # 点赞
+        lr = self.lib.toggle_comment_like(c1["data"]["comment_id"], other)
+        self.assertTrue(lr["data"]["is_liked"])
+
+        # 取消赞
+        ur = self.lib.toggle_comment_like(c1["data"]["comment_id"], other)
+        self.assertFalse(ur["data"]["is_liked"])
+
+        # 删回复
+        self.assertTrue(self.lib.delete_comment(c2["data"]["comment_id"], other)["success"])
+        self.assertEqual(len(self.lib.get_comment_replies(c1["data"]["comment_id"])["data"]["replies"]), 0)
+
+        # 删评论
+        self.assertTrue(self.lib.delete_comment(c1["data"]["comment_id"], uid)["success"])
+        self.assertEqual(self.lib.get_post_comments(pid)["data"]["total"], 0)
+
+    def test_admin_delete_others_comment(self):
+        """管理员可删除任意评论"""
+        uid = self._add_user()
+        admin = self._add_user(role=3)
+        pid = self._add_post(uid)
+        c = self._add_comment(pid, uid)
+        self.assertTrue(self.lib.admin_delete_comment(c["data"]["comment_id"], admin)["success"])
+
+    def test_delete_reduces_post_comment_count(self):
+        """删除评论后帖子 comment_count 减少"""
+        uid = self._add_user()
+        pid = self._add_post(uid)
+        self._add_comment(pid, uid)
+        self._add_comment(pid, uid)
+        post = self.post_lib.get_post_by_id(pid)
+        count_before = post["data"]["comment_count"]
+        self.lib.delete_comment(
+            self.lib.get_post_comments(pid)["data"]["comments"][0]["comment_id"], uid
+        )
+        post_after = self.post_lib.get_post_by_id(pid)
+        self.assertEqual(post_after["data"]["comment_count"], count_before - 1)
+
+    def test_like_increases_counts(self):
+        """点赞后评论 like_count 和用户 like_count 都增加"""
+        pid = self._add_post()
+        author = self._add_user()
+        c = self._add_comment(pid, author)
+        liker = self._add_user()
+        self.lib.toggle_comment_like(c["data"]["comment_id"], liker)
+        comment = self.lib.get_comment_by_id(c["data"]["comment_id"])["data"]
+        self.assertEqual(comment["like_count"], 1)
+        # 作者的 like_count 也应 +1
+        from backend.libs.user_library import UserLibrary
+        author_info = UserLibrary().get_user_by_account(author)["data"]
+        self.assertGreaterEqual(author_info["like_count"], 1)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

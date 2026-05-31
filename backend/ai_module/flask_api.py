@@ -1,3 +1,4 @@
+#python -m backend.ai_module.flask_api
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -67,6 +68,25 @@ def add_animal():
     os.unlink(tmp_path)
     return jsonify({"success": True, "animal_id": animal_id})
 
+@app.route('/extract-features', methods=['POST'])
+def extract_features():
+    """提取图片特征向量（供主项目Library调用）"""
+    file = request.files['file']
+    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+    try:
+        features = ai.extract_features(tmp_path)
+        return jsonify({
+            "success": True,
+            "features": features.tolist(),  # 将numpy数组转为列表
+            "dimension": len(features)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+    finally:
+        os.unlink(tmp_path)
+
 @app.route('/animals', methods=['GET'])
 def list_animals():
     """列出所有动物"""
@@ -92,6 +112,7 @@ if __name__ == '__main__':
     print("  POST /detect-species  - 识别种类和品种")
     print("  POST /identify        - 识别个体")
     print("  POST /add-animal      - 添加动物")
+    print("  POST /extract-features - 提取图片特征向量")
     print("  GET  /animals         - 动物列表")
     print("  GET  /stats           - 服务统计")
     print("="*50)

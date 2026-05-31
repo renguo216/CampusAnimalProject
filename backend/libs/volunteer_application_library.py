@@ -7,6 +7,7 @@
 
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
 import random
 import string
 
@@ -39,25 +40,25 @@ class VolunteerApplicationLibrary:
         """
         # 先检查是否有待审核申请（内部自己管理连接）
         if self._has_pending_application(user_id):
-            return {"success": False, "message": "您已提交过申请，请等待审核", "data": None}
+            return error_response("您已提交过申请，请等待审核")
 
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 验证用户存在且激活
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("is_active") == 0:
-                return {"success": False, "message": "用户已被封禁，无法申请", "data": None}
+                return error_response("用户已被封禁，无法申请")
 
             # 2. 检查角色：管理员不能申请，已是志愿者不能重复申请
             role = user.get("role")
             if role == 3:
-                return {"success": False, "message": "管理员无需申请志愿者", "data": None}
+                return error_response("管理员无需申请志愿者")
             if role == 2:
-                return {"success": False, "message": "您已经是志愿者，无需重复申请", "data": None}
+                return error_response("您已经是志愿者，无需重复申请")
 
             # 3. 插入申请记录（自增主键，不手动设置）
             now = datetime.now()
@@ -69,7 +70,7 @@ class VolunteerApplicationLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.insert("t_volunteer_application", data):
-                return {"success": False, "message": "提交申请失败", "data": None}
+                return error_response("提交申请失败")
 
             # 获取自增ID
             application_id = self.db.get_last_insert_id()
@@ -84,7 +85,7 @@ class VolunteerApplicationLibrary:
                 }
             }
         except Exception as e:
-            return {"success": False, "message": f"提交申请失败：{str(e)}", "data": None}
+            return error_response(f"提交申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -102,18 +103,18 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             # 验证所有权和状态
             if application.get("user_id") != user_id:
-                return {"success": False, "message": "无权修改他人的申请", "data": None}
+                return error_response("无权修改他人的申请")
             if application.get("status") != 0:
-                return {"success": False, "message": "仅待审核的申请可以修改", "data": None}
+                return error_response("仅待审核的申请可以修改")
 
             now = datetime.now()
             update_data = {
@@ -121,7 +122,7 @@ class VolunteerApplicationLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_volunteer_application", "application_id", application_id, update_data):
-                return {"success": False, "message": "修改申请失败", "data": None}
+                return error_response("修改申请失败")
 
             return {
                 "success": True,
@@ -129,7 +130,7 @@ class VolunteerApplicationLibrary:
                 "data": {"application_id": application_id, "updated_at": update_data["updated_at"]}
             }
         except Exception as e:
-            return {"success": False, "message": f"修改申请失败：{str(e)}", "data": None}
+            return error_response(f"修改申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -145,17 +146,17 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             if application.get("user_id") != user_id:
-                return {"success": False, "message": "无权撤销他人的申请", "data": None}
+                return error_response("无权撤销他人的申请")
             if application.get("status") != 0:
-                return {"success": False, "message": "仅待审核的申请可以撤销", "data": None}
+                return error_response("仅待审核的申请可以撤销")
 
             now = datetime.now()
             update_data = {
@@ -163,7 +164,7 @@ class VolunteerApplicationLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_volunteer_application", "application_id", application_id, update_data):
-                return {"success": False, "message": "撤销申请失败", "data": None}
+                return error_response("撤销申请失败")
 
             return {
                 "success": True,
@@ -171,7 +172,7 @@ class VolunteerApplicationLibrary:
                 "data": {"application_id": application_id, "status": 3, "cancelled_at": now.strftime("%Y-%m-%d %H:%M:%S")}
             }
         except Exception as e:
-            return {"success": False, "message": f"撤销申请失败：{str(e)}", "data": None}
+            return error_response(f"撤销申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -188,12 +189,12 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             user = self.db.get_by_id("t_user", "user_id", application.get("user_id"))
 
@@ -211,9 +212,9 @@ class VolunteerApplicationLibrary:
                 "created_at": application.get("created_at").strftime("%Y-%m-%d %H:%M:%S") if application.get("created_at") else None,
                 "updated_at": application.get("updated_at").strftime("%Y-%m-%d %H:%M:%S") if application.get("updated_at") else None
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data)
         except Exception as e:
-            return {"success": False, "message": f"查询申请详情失败：{str(e)}", "data": None}
+            return error_response(f"查询申请详情失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -230,7 +231,7 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"applications": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -244,7 +245,7 @@ class VolunteerApplicationLibrary:
 
             if not result or not result.get("data"):
                 data = {"applications": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data)
 
             items = self._format_application_list(result["data"])
             data = {
@@ -253,9 +254,9 @@ class VolunteerApplicationLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data)
         except Exception as e:
-            return {"success": False, "message": f"查询用户申请记录失败：{str(e)}", "data": None}
+            return error_response(f"查询用户申请记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -270,12 +271,12 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"application_id": int, "status": int, "status_text": str}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             status_map = {0: "待审核", 1: "已通过", 2: "已驳回", 3: "已撤销"}
             return {
@@ -288,7 +289,7 @@ class VolunteerApplicationLibrary:
                 }
             }
         except Exception as e:
-            return {"success": False, "message": f"查询申请状态失败：{str(e)}", "data": None}
+            return error_response(f"查询申请状态失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -320,7 +321,7 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"applications": list, ...}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             where_clause = None
@@ -340,7 +341,7 @@ class VolunteerApplicationLibrary:
 
             if not result or not result.get("data"):
                 data = {"applications": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data)
 
             items = self._format_application_list(result["data"])
             data = {
@@ -349,9 +350,9 @@ class VolunteerApplicationLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data)
         except Exception as e:
-            return {"success": False, "message": f"查询申请记录失败：{str(e)}", "data": None}
+            return error_response(f"查询申请记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -373,20 +374,20 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             if application.get("status") != 0:
-                return {"success": False, "message": "仅待审核的申请可以通过", "data": None}
+                return error_response("仅待审核的申请可以通过")
 
             # 验证操作者是否为管理员
             admin = self.db.get_by_id("t_user", "user_id", admin_id)
             if not admin or admin.get("role") != 3:
-                return {"success": False, "message": "仅管理员可以审核", "data": None}
+                return error_response("仅管理员可以审核")
 
             now = datetime.now()
 
@@ -401,13 +402,13 @@ class VolunteerApplicationLibrary:
                 update_app["review_comment"] = review_comment
 
             if not self.db.update("t_volunteer_application", "application_id", application_id, update_app):
-                return {"success": False, "message": "更新申请状态失败", "data": None}
+                return error_response("更新申请状态失败")
 
             # 2. 更新用户表：设置角色、志愿者编号、等级
             user_id = application.get("user_id")
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "申请人不存在", "data": None}
+                return error_response("申请人不存在")
 
             update_user = {"role": 2, "level": 1}
             # 如果用户还没有志愿者编号，则生成一个
@@ -416,7 +417,7 @@ class VolunteerApplicationLibrary:
                 update_user["volunteer_id"] = volunteer_id
 
             if not self.db.update("t_user", "user_id", user_id, update_user):
-                return {"success": False, "message": "更新用户角色失败", "data": None}
+                return error_response("更新用户角色失败")
 
             return {
                 "success": True,
@@ -431,7 +432,7 @@ class VolunteerApplicationLibrary:
                 }
             }
         except Exception as e:
-            return {"success": False, "message": f"审核通过失败：{str(e)}", "data": None}
+            return error_response(f"审核通过失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -449,20 +450,20 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             application = self.db.get_by_id("t_volunteer_application", "application_id", application_id)
             if not application:
-                return {"success": False, "message": "申请记录不存在", "data": None}
+                return error_response("申请记录不存在")
 
             if application.get("status") != 0:
-                return {"success": False, "message": "仅待审核的申请可以驳回", "data": None}
+                return error_response("仅待审核的申请可以驳回")
 
             # 验证管理员身份
             admin = self.db.get_by_id("t_user", "user_id", admin_id)
             if not admin or admin.get("role") != 3:
-                return {"success": False, "message": "仅管理员可以审核", "data": None}
+                return error_response("仅管理员可以审核")
 
             now = datetime.now()
             update_data = {
@@ -473,7 +474,7 @@ class VolunteerApplicationLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_volunteer_application", "application_id", application_id, update_data):
-                return {"success": False, "message": "驳回申请失败", "data": None}
+                return error_response("驳回申请失败")
 
             return {
                 "success": True,
@@ -487,7 +488,7 @@ class VolunteerApplicationLibrary:
                 }
             }
         except Exception as e:
-            return {"success": False, "message": f"驳回申请失败：{str(e)}", "data": None}
+            return error_response(f"驳回申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -504,15 +505,15 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
 
             if user.get("role") != 2:
-                return {"success": False, "message": "该用户不是志愿者", "data": None}
+                return error_response("该用户不是志愿者")
 
             data = {
                 "user_id": user.get("user_id"),
@@ -523,9 +524,9 @@ class VolunteerApplicationLibrary:
                 "points": user.get("points"),
                 "created_at": user.get("created_at").strftime("%Y-%m-%d %H:%M:%S") if user.get("created_at") else None
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data)
         except Exception as e:
-            return {"success": False, "message": f"查询志愿者信息失败：{str(e)}", "data": None}
+            return error_response(f"查询志愿者信息失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -540,17 +541,17 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"volunteer_id": str or None}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("role") != 2:
-                return {"success": True, "message": "该用户不是志愿者", "data": {"volunteer_id": None}}
-            return {"success": True, "message": "成功", "data": {"volunteer_id": user.get("volunteer_id")}}
+                return success_response("该用户不是志愿者", {"volunteer_id": None})
+            return success_response("成功", {"volunteer_id": user.get("volunteer_id")})
         except Exception as e:
-            return {"success": False, "message": f"查询志愿者编号失败：{str(e)}", "data": None}
+            return error_response(f"查询志愿者编号失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -565,17 +566,17 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"level": int or None}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("role") != 2:
-                return {"success": True, "message": "该用户不是志愿者", "data": {"level": None}}
-            return {"success": True, "message": "成功", "data": {"level": user.get("level")}}
+                return success_response("该用户不是志愿者", {"level": None})
+            return success_response("成功", {"level": user.get("level")})
         except Exception as e:
-            return {"success": False, "message": f"查询志愿者等级失败：{str(e)}", "data": None}
+            return error_response(f"查询志愿者等级失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -592,26 +593,26 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 验证操作者身份
             admin = self.db.get_by_id("t_user", "user_id", admin_id)
             if not admin or admin.get("role") != 3:
-                return {"success": False, "message": "仅管理员可以修改志愿者等级", "data": None}
+                return error_response("仅管理员可以修改志愿者等级")
 
             # 验证目标用户
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "目标用户不存在", "data": None}
+                return error_response("目标用户不存在")
             if user.get("role") != 2:
-                return {"success": False, "message": "该用户不是志愿者", "data": None}
+                return error_response("该用户不是志愿者")
 
             if new_level < 1:
-                return {"success": False, "message": "等级必须为正整数", "data": None}
+                return error_response("等级必须为正整数")
 
             if not self.db.update("t_user", "user_id", user_id, {"level": new_level}):
-                return {"success": False, "message": "更新等级失败", "data": None}
+                return error_response("更新等级失败")
 
             return {
                 "success": True,
@@ -619,7 +620,7 @@ class VolunteerApplicationLibrary:
                 "data": {"user_id": user_id, "level": new_level}
             }
         except Exception as e:
-            return {"success": False, "message": f"更新志愿者等级失败：{str(e)}", "data": None}
+            return error_response(f"更新志愿者等级失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -633,7 +634,7 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": dict}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             sql = """SELECT status, COUNT(*) AS count
@@ -657,9 +658,9 @@ class VolunteerApplicationLibrary:
                 "rejected": count_map["2"],
                 "cancelled": count_map["3"]
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data)
         except Exception as e:
-            return {"success": False, "message": f"统计失败：{str(e)}", "data": None}
+            return error_response(f"统计失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -671,15 +672,15 @@ class VolunteerApplicationLibrary:
             dict: {"success": bool, "message": str, "data": {"count": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             sql = "SELECT COUNT(*) AS count FROM t_user WHERE role = 2 AND is_active = 1"
             result = self.db.execute_raw_sql(sql)
             count = result[0]["count"] if result else 0
-            return {"success": True, "message": "成功", "data": {"count": count}}
+            return success_response("成功", {"count": count})
         except Exception as e:
-            return {"success": False, "message": f"统计失败：{str(e)}", "data": None}
+            return error_response(f"统计失败：{str(e)}")
         finally:
             self.db.close_database()
 

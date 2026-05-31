@@ -1,242 +1,460 @@
-# ===== backend/tests/test_exchange_library.py =====
+# backend/tests/test_exchange_library.py
 """
-测试 ExchangeLibrary 所有功能
-运行方式（在项目根目录执行）：
+ExchangeLibrary 完整测试套件（unittest 框架）
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_exchange_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_user、t_exchange_product、t_exchange 表已存在
 """
+
+import os
+import sys
+import unittest
+import uuid
+from datetime import datetime
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from backend.libs.exchange_library import ExchangeLibrary
 from backend.libs.exchange_product_library import ExchangeProductLibrary
 from backend.libs.user_library import UserLibrary
-import uuid
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+# 期望的兑换记录详情字段
+EXPECTED_DETAIL_FIELDS = [
+    "exchange_id", "user_id", "product_id", "points_used",
+    "status", "created_at", "updated_at",
+    "reviewed_by", "reviewed_at", "review_comment", "contact_info"
+]
 
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+class TestExchangeLibrary(unittest.TestCase):
+    """ExchangeLibrary 完整功能测试"""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = ExchangeLibrary()
+        cls.product_lib = ExchangeProductLibrary()
+        cls.user_lib = UserLibrary()
+        cls._cleanup_all()
 
-def main():
-    exchange_lib = ExchangeLibrary()
-    product_lib = ExchangeProductLibrary()
-    user_lib = UserLibrary()
-    db = exchange_lib.db
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
-    # ======== 清理旧测试数据 ========
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_exchange WHERE user_id LIKE 'test_ex_%'")
-        db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE '测试商品_%'")
-        db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_ex_%'")
-        db.close_database()
-        print("已清理旧测试数据")
+    def setUp(self):
+        self.exchange_ids = []
+        self.product_ids = []
+        self.user_ids = []
 
-    # ======== 准备数据 ========
-    u1 = f"test_ex_{uuid.uuid4().hex[:6]}"
-    u2 = f"test_ex_{uuid.uuid4().hex[:6]}"
-    admin = f"test_ex_{uuid.uuid4().hex[:6]}"
-    user_lib.register_user(u1, "用户1", role=1)
-    user_lib.register_user(u2, "用户2", role=1)
-    user_lib.register_user(admin, "管理员", role=3)
-
-    # 设置积分
-    if db.open_database():
-        db.execute_raw_sql("UPDATE t_user SET points = %s WHERE user_id = %s", (500, u1))
-        db.execute_raw_sql("UPDATE t_user SET points = %s WHERE user_id = %s", (50, u2))
-        db.close_database()
-
-    # 创建商品
-    p1 = product_lib.create_exchange_product({
-        "name": f"测试商品_{uuid.uuid4().hex[:6]}",
-        "points_required": 100,
-        "stock": 5,
-        "status": 1
-    })
-    p1_id = p1["data"]["product_id"] if p1["success"] else None
-
-    p2 = product_lib.create_exchange_product({
-        "name": f"测试商品_{uuid.uuid4().hex[:6]}",
-        "points_required": 200,
-        "stock": 0,
-        "status": 1
-    })
-    p2_id = p2["data"]["product_id"] if p2["success"] else None
-
-    print("\n" + "=" * 50 + "\n  开始测试 ExchangeLibrary\n" + "=" * 50)
-
-    # ========== 1. 查询积分 ==========
-    print("\n1. 测试查询积分 (check_user_points)...")
-    result = exchange_lib.check_user_points(u1)
-    if result["success"] and result["data"]["points"] == 500:
-        log_pass("查询用户1积分", "points=500")
-    else:
-        log_fail("查询用户1积分", f"points={result['data']['points'] if result['success'] else '失败'}")
-
-    result = exchange_lib.check_user_points("not_exist")
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("查询不存在用户", "返回 False")
-    else:
-        log_fail("查询不存在用户", f"返回 {result['success']}")
-
-    # ========== 2. 提交兑换 ==========
-    print("\n2. 测试提交兑换 (submit_exchange)...")
-    ex1_id = None
-
-    if p1_id:
-        result = exchange_lib.submit_exchange(u1, p1_id)
-        if result["success"]:
-            ex1_id = result["data"]["exchange_id"]
-            log_pass(f"用户1兑换商品1", f"exchange_id={ex1_id}")
-            # 验证积分扣除
-            pts = exchange_lib.check_user_points(u1)
-            if pts["success"] and pts["data"]["points"] == 400:
-                log_pass("验证积分扣除", "points=400")
+    def tearDown(self):
+        if not (self.exchange_ids or self.product_ids or self.user_ids):
+            return
+        db = self.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
             else:
-                log_fail("验证积分扣除", f"points={pts['data']['points']}")
-            # 验证库存减少
-            stock = product_lib.get_product_stock(p1_id)
-            if stock["success"] and stock["data"]["stock"] == 4:
-                log_pass("验证库存减少", "stock=4")
+                need_close = False
+            for eid in self.exchange_ids:
+                db.execute_raw_sql("DELETE FROM t_exchange WHERE exchange_id=%s", (eid,))
+            for pid in self.product_ids:
+                db.execute_raw_sql("DELETE FROM t_exchange_product WHERE product_id=%s", (pid,))
+            for uid in self.user_ids:
+                db.execute_raw_sql("DELETE FROM t_user WHERE user_id=%s", (uid,))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[tearDown 警告] 清理失败: {e}")
+            try:
+                db.close_database()
+            except:
+                pass
+
+    @classmethod
+    def _cleanup_all(cls):
+        db = cls.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
             else:
-                log_fail("验证库存减少", f"stock={stock['data']['stock'] if stock['success'] else '失败'}")
+                need_close = False
+            db.execute_raw_sql("DELETE FROM t_exchange WHERE user_id LIKE %s", ("test_exchange_%",))
+            db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE %s", ("test_exchange_%",))
+            db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE %s", ("test_exchange_%",))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[_cleanup_all 警告] 清理失败: {e}")
+
+    # ---- 辅助方法 ----
+
+    def _add_user(self, role=1, is_active=1, points=500):
+        """注册测试用户并返回 user_id"""
+        uid = f"test_exchange_{uuid.uuid4().hex[:8]}"
+        r = self.user_lib.register_user(uid, f"nick_{uid[:8]}",
+                                          avatar_url="http://x.com/a.jpg", role=role)
+        if not r.get("success"):
+            self.user_lib.delete_user(uid)
+            r = self.user_lib.register_user(uid, f"nick_{uid[:8]}",
+                                              avatar_url="http://x.com/a.jpg", role=role)
+        if is_active == 0:
+            self.user_lib.toggle_active_status(uid, 0)
+        # 设置积分
+        db = self.lib.db
+        if db.connection is None:
+            db.open_database()
+            need_close = True
         else:
-            log_fail("用户1兑换商品1", f"失败：{result['message']}")
+            need_close = False
+        db.execute_raw_sql("UPDATE t_user SET points = %s WHERE user_id = %s", (points, uid))
+        if need_close:
+            db.close_database()
+        self.user_ids.append(uid)
+        return uid
 
-    # 积分不足
-    if p1_id:
-        result = exchange_lib.submit_exchange(u2, p1_id)
-        if not result["success"] and "积分不足" in result["message"]:
-            log_pass("用户2积分不足", "返回 False")
-        else:
-            log_fail("用户2积分不足", f"返回 {result['success']}")
+    def _add_product(self, points_required=100, stock=5, status=1):
+        """创建测试商品并返回 product_id"""
+        r = self.product_lib.create_exchange_product({
+            "name": f"test_exchange_{uuid.uuid4().hex[:8]}",
+            "points_required": points_required,
+            "stock": stock,
+            "status": status
+        })
+        if not r.get("success"):
+            raise RuntimeError(f"创建商品失败: {r}")
+        pid = r["data"]["product_id"]
+        self.product_ids.append(pid)
+        return pid
 
-    # 库存不足
-    if p2_id:
-        result = exchange_lib.submit_exchange(u1, p2_id)
-        if not result["success"] and "库存不足" in result["message"]:
-            log_pass("商品2库存不足", "返回 False")
-        else:
-            log_fail("商品2库存不足", f"返回 {result['success']}")
+    def _submit(self, user_id, product_id):
+        """提交兑换并返回结果"""
+        r = self.lib.submit_exchange(user_id, product_id)
+        if r.get("success"):
+            self.exchange_ids.append(r["data"]["exchange_id"])
+        return r
 
-    # 商品不存在
-    result = exchange_lib.submit_exchange(u1, 999999)
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("兑换不存在商品", "返回 False")
-    else:
-        log_fail("兑换不存在商品", f"返回 {result['success']}")
+    # ==================== check_user_points ====================
 
-    # ========== 3. 取消兑换 ==========
-    print("\n3. 测试取消兑换 (cancel_exchange)...")
-    ex2_id = None
+    def test_check_points_success(self):
+        uid = self._add_user(points=500)
+        r = self.lib.check_user_points(uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["points"], 500)
 
-    if p1_id:
-        result = exchange_lib.submit_exchange(u1, p1_id)
-        if result["success"]:
-            ex2_id = result["data"]["exchange_id"]
-            # 正常取消
-            cancel = exchange_lib.cancel_exchange(ex2_id, u1)
-            if cancel["success"]:
-                log_pass(f"用户1取消兑换 {ex2_id}", "成功")
-                # 验证积分返还
-                pts = exchange_lib.check_user_points(u1)
-                if pts["success"] and pts["data"]["points"] == 400:
-                    log_pass("验证积分返还", "points=400")
-                else:
-                    log_fail("验证积分返还", f"points={pts['data']['points']}")
-                # 验证库存恢复
-                stock = product_lib.get_product_stock(p1_id)
-                if stock["success"] and stock["data"]["stock"] == 4:
-                    log_pass("验证库存恢复", "stock=4")
-                else:
-                    log_fail("验证库存恢复", f"stock={stock['data']['stock']}")
-            else:
-                log_fail("取消兑换", f"失败：{cancel['message']}")
+    def test_check_points_not_exists(self):
+        r = self.lib.check_user_points("no_user")
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    # 无权取消
-    if ex1_id:
-        result = exchange_lib.cancel_exchange(ex1_id, u2)
-        if not result["success"] and "无权" in result["message"]:
-            log_pass("用户2无权取消", "返回 False")
-        else:
-            log_fail("用户2无权取消", f"返回 {result['success']}")
+    # ==================== submit_exchange ====================
 
-    # 取消不存在
-    result = exchange_lib.cancel_exchange(999999, u1)
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("取消不存在记录", "返回 False")
-    else:
-        log_fail("取消不存在记录", f"返回 {result['success']}")
+    def test_submit_success(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        r = self._submit(uid, pid)
+        self.assertTrue(r["success"])
+        self.assertIn("exchange_id", r["data"])
+        self.assertEqual(r["data"]["points_used"], 100)
 
-    # ========== 4. 完成兑换 ==========
-    print("\n4. 测试完成兑换 (complete_exchange)...")
-    if ex1_id:
-        result = exchange_lib.complete_exchange(ex1_id)
-        if result["success"]:
-            log_pass(f"完成兑换 {ex1_id}", "成功")
-        else:
-            log_fail("完成兑换", f"失败：{result['message']}")
+    def test_submit_deducts_points(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        self._submit(uid, pid)
+        pts = self.lib.check_user_points(uid)
+        self.assertEqual(pts["data"]["points"], 400)
 
-    # 完成已取消的
-    if ex2_id:
-        result = exchange_lib.complete_exchange(ex2_id)
-        if not result["success"] and "状态" in result["message"]:
-            log_pass("完成已取消兑换", "返回 False")
-        else:
-            log_fail("完成已取消兑换", f"返回 {result['success']}")
+    def test_submit_deducts_stock(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        self._submit(uid, pid)
+        stock = self.product_lib.get_product_stock(pid)
+        self.assertEqual(stock["data"]["stock"], 4)
 
-    # ========== 5. 拒绝兑换 ==========
-    print("\n5. 测试拒绝兑换 (reject_exchange)...")
-    if p1_id:
-        result = exchange_lib.submit_exchange(u1, p1_id)
-        if result["success"]:
-            ex3_id = result["data"]["exchange_id"]
-            reject = exchange_lib.reject_exchange(ex3_id, "库存不足，拒绝兑换")
-            if reject["success"]:
-                log_pass(f"拒绝兑换 {ex3_id}", "成功，带审核意见")
-                # 验证积分返还
-                pts = exchange_lib.check_user_points(u1)
-                if pts["success"] and pts["data"]["points"] == 400:
-                    log_pass("拒绝后积分返还", "points=400")
-                else:
-                    log_fail("拒绝后积分返还", f"points={pts['data']['points']}")
-            else:
-                log_fail("拒绝兑换", f"失败：{reject['message']}")
+    def test_submit_insufficient_points(self):
+        uid = self._add_user(points=50)
+        pid = self._add_product(points_required=100, stock=5)
+        r = self.lib.submit_exchange(uid, pid)
+        self.assertFalse(r["success"])
+        self.assertIn("积分不足", r["message"])
 
-    # 拒绝不存在
-    result = exchange_lib.reject_exchange(999999, "测试")
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("拒绝不存在记录", "返回 False")
-    else:
-        log_fail("拒绝不存在记录", f"返回 {result['success']}")
+    def test_submit_insufficient_stock(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=0)
+        r = self.lib.submit_exchange(uid, pid)
+        self.assertFalse(r["success"])
+        self.assertIn("库存不足", r["message"])
 
-    # ========== 6. 查询记录 ==========
-    print("\n6. 测试查询兑换记录...")
-    result = exchange_lib.get_user_exchanges(u1, page=1, page_size=10)
-    if result["success"] and result["data"]["total"] >= 1:
-        log_pass("查询用户1记录", f"total={result['data']['total']}")
-    else:
-        log_fail("查询用户1记录", f"total={result['data']['total'] if result['success'] else '失败'}")
+    def test_submit_product_not_exists(self):
+        uid = self._add_user(points=500)
+        r = self.lib.submit_exchange(uid, 999999)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    result = exchange_lib.get_all_exchanges(page=1, page_size=10)
-    if result["success"] and result["data"]["total"] >= 1:
-        log_pass("查询所有记录", f"total={result['data']['total']}")
-    else:
-        log_fail("查询所有记录", f"total={result['data']['total'] if result['success'] else '失败'}")
+    def test_submit_user_not_exists(self):
+        pid = self._add_product(points_required=100, stock=5)
+        r = self.lib.submit_exchange("no_user", pid)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    # ========== 7. 清理 ==========
-    print("\n7. 清理测试数据...")
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_exchange WHERE user_id LIKE 'test_ex_%'")
-        db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE '测试商品_%'")
-        db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_ex_%'")
-        db.close_database()
-        log_pass("清理数据", "完成")
-    else:
-        log_fail("清理数据", "连接失败")
+    # ==================== cancel_exchange ====================
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    def test_cancel_success(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        r = self.lib.cancel_exchange(eid, uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 2)
+
+    def test_cancel_refunds_points(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.cancel_exchange(eid, uid)
+        pts = self.lib.check_user_points(uid)
+        self.assertEqual(pts["data"]["points"], 500)
+
+    def test_cancel_restores_stock(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.cancel_exchange(eid, uid)
+        stock = self.product_lib.get_product_stock(pid)
+        self.assertEqual(stock["data"]["stock"], 5)
+
+    def test_cancel_not_owner(self):
+        uid = self._add_user(points=500)
+        other = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        r = self.lib.cancel_exchange(eid, other)
+        self.assertFalse(r["success"])
+        self.assertIn("无权", r["message"])
+
+    def test_cancel_not_exists(self):
+        uid = self._add_user()
+        r = self.lib.cancel_exchange(999999, uid)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    def test_cancel_after_complete(self):
+        """已完成的不能取消"""
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.complete_exchange(eid)
+        r = self.lib.cancel_exchange(eid, uid)
+        self.assertFalse(r["success"])
+        self.assertIn("状态", r["message"])
+
+    # ==================== complete_exchange ====================
+
+    def test_complete_success(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        r = self.lib.complete_exchange(eid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 1)
+
+    def test_complete_not_exists(self):
+        r = self.lib.complete_exchange(999999)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    def test_complete_after_cancel(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.cancel_exchange(eid, uid)
+        r = self.lib.complete_exchange(eid)
+        self.assertFalse(r["success"])
+        self.assertIn("状态", r["message"])
+
+    # ==================== reject_exchange ====================
+
+    def test_reject_success(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        r = self.lib.reject_exchange(eid, "库存不足，拒绝兑换")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 2)
+
+    def test_reject_refunds_points(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.reject_exchange(eid, "驳回")
+        pts = self.lib.check_user_points(uid)
+        self.assertEqual(pts["data"]["points"], 500)
+
+    def test_reject_restores_stock(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.reject_exchange(eid, "驳回")
+        stock = self.product_lib.get_product_stock(pid)
+        self.assertEqual(stock["data"]["stock"], 5)
+
+    def test_reject_not_exists(self):
+        r = self.lib.reject_exchange(999999, "测试")
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    def test_reject_after_complete(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.complete_exchange(eid)
+        r = self.lib.reject_exchange(eid, "驳回")
+        self.assertFalse(r["success"])
+        self.assertIn("状态", r["message"])
+
+    # ==================== get_user_exchanges ====================
+
+    def test_get_user_exchanges_success(self):
+        uid = self._add_user(points=500)
+        for _ in range(3):
+            pid = self._add_product(points_required=10, stock=5)
+            self._submit(uid, pid)
+        r = self.lib.get_user_exchanges(uid, page=1, page_size=20)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 3)
+        self.assertEqual(len(r["data"]["records"]), 3)
+        for f in ["records", "total", "page", "page_size"]:
+            self.assertIn(f, r["data"])
+
+    def test_get_user_exchanges_empty(self):
+        r = self.lib.get_user_exchanges("no_user")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 0)
+
+    def test_get_user_exchanges_pagination(self):
+        uid = self._add_user(points=500)
+        for _ in range(3):
+            pid = self._add_product(points_required=10, stock=5)
+            self._submit(uid, pid)
+        p1 = self.lib.get_user_exchanges(uid, page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["records"]), 2)
+        p2 = self.lib.get_user_exchanges(uid, page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["records"]), 1)
+
+    def test_get_user_excludes_other_users(self):
+        uid1 = self._add_user(points=500)
+        uid2 = self._add_user(points=500)
+        pid = self._add_product(points_required=10, stock=5)
+        self._submit(uid1, pid)
+        r = self.lib.get_user_exchanges(uid2)
+        self.assertEqual(r["data"]["total"], 0)
+
+    # ==================== get_all_exchanges ====================
+
+    def test_get_all_exchanges_success(self):
+        for _ in range(3):
+            uid = self._add_user(points=500)
+            pid = self._add_product(points_required=10, stock=5)
+            self._submit(uid, pid)
+        r = self.lib.get_all_exchanges(page=1, page_size=20)
+        self.assertTrue(r["success"])
+        self.assertGreaterEqual(r["data"]["total"], 3)
+
+    def test_get_all_exchanges_pagination(self):
+        for _ in range(3):
+            uid = self._add_user(points=500)
+            pid = self._add_product(points_required=10, stock=5)
+            self._submit(uid, pid)
+        p1 = self.lib.get_all_exchanges(page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["records"]), 2)
+        p2 = self.lib.get_all_exchanges(page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["records"]), 1)
+
+    def test_get_all_exchanges_field(self):
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=10, stock=5)
+        self._submit(uid, pid)
+        r = self.lib.get_all_exchanges()
+        record = r["data"]["records"][0]
+        for f in ["exchange_id", "user_id", "product_id", "product_name", "status"]:
+            self.assertIn(f, record)
+
+    # ==================== DB 连接失败（批量覆盖） ====================
+
+    def test_db_connection_fail(self):
+        """所有需要数据库的方法在连接失败时均返回错误"""
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.check_user_points("x")["success"])
+            self.assertFalse(self.lib.submit_exchange("x", 1)["success"])
+            self.assertFalse(self.lib.cancel_exchange(1, "u")["success"])
+            self.assertFalse(self.lib.complete_exchange(1)["success"])
+            self.assertFalse(self.lib.reject_exchange(1)["success"])
+            self.assertFalse(self.lib.get_user_exchanges("x")["success"])
+            self.assertFalse(self.lib.get_all_exchanges()["success"])
+
+    # ==================== 综合业务场景 ====================
+
+    def test_full_lifecycle_complete(self):
+        """提交 → 完成"""
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.assertEqual(self.lib.get_user_exchanges(uid)["data"]["records"][0]["status"], 0)
+        self.lib.complete_exchange(eid)
+        self.assertEqual(self.lib.get_user_exchanges(uid)["data"]["records"][0]["status"], 1)
+
+    def test_full_lifecycle_cancel(self):
+        """提交 → 取消"""
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.cancel_exchange(eid, uid)
+        self.assertEqual(self.lib.get_user_exchanges(uid)["data"]["records"][0]["status"], 2)
+
+    def test_full_lifecycle_reject(self):
+        """提交 → 拒绝"""
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.reject_exchange(eid, "不符合条件")
+        self.assertEqual(self.lib.get_user_exchanges(uid)["data"]["records"][0]["status"], 2)
+
+    def test_cancel_then_resubmit(self):
+        """取消后可以重新兑换同一商品"""
+        uid = self._add_user(points=500)
+        pid = self._add_product(points_required=100, stock=5)
+        eid1 = self._submit(uid, pid)["data"]["exchange_id"]
+        self.lib.cancel_exchange(eid1, uid)
+        r = self._submit(uid, pid)
+        self.assertTrue(r["success"])
+        self.assertNotEqual(r["data"]["exchange_id"], eid1)
+
+    def test_multiple_users_same_product(self):
+        """多用户兑换同一商品"""
+        pid = self._add_product(points_required=10, stock=5)
+        for _ in range(3):
+            uid = self._add_user(points=500)
+            self._submit(uid, pid)
+        r = self.lib.get_all_exchanges()
+        self.assertGreaterEqual(r["data"]["total"], 3)
+
+    def test_same_user_multiple_products(self):
+        """同一用户兑换多个商品"""
+        uid = self._add_user(points=500)
+        for _ in range(3):
+            pid = self._add_product(points_required=10, stock=5)
+            self._submit(uid, pid)
+        r = self.lib.get_user_exchanges(uid)
+        self.assertEqual(r["data"]["total"], 3)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

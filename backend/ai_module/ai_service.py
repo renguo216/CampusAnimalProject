@@ -64,7 +64,7 @@ class AnimalAIService:
         }
         
         # 狗的品种关键词
-         dog_breeds = {
+        dog_breeds = {
             'golden_retriever': '金毛寻回犬',
             'labrador_retriever': '拉布拉多',
             'german_shepherd': '德国牧羊犬',

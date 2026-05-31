@@ -1,416 +1,524 @@
-# ===== backend/tests/test_user_library.py =====
+# backend/tests/test_user_library.py
 """
-测试 UserLibrary 所有功能
-运行方式（在项目根目录执行）：
+UserLibrary 完整测试套件（unittest 框架）
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_user_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_user、t_points_log 表已存在
 """
-from backend.libs.user_library import UserLibrary
+
+import os
+import sys
+import unittest
 import uuid
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from backend.libs.user_library import UserLibrary
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+class TestUserLibrary(unittest.TestCase):
+    """UserLibrary 完整功能测试"""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = UserLibrary()
+        cls._cleanup_all()
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
+    def setUp(self):
+        self.user_ids = []
 
-def main():
-    user_lib = UserLibrary()
-    db = user_lib.db
+    def tearDown(self):
+        if not self.user_ids:
+            return
+        db = self.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
+            else:
+                need_close = False
+            for uid in self.user_ids:
+                db.execute_raw_sql("DELETE FROM t_points_log WHERE user_id = %s", (uid,))
+                db.execute_raw_sql("DELETE FROM t_user WHERE user_id = %s", (uid,))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[tearDown 警告] 清理失败: {e}")
+            try:
+                db.close_database()
+            except:
+                pass
 
-    # ======== 清理旧测试数据 ========
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_points_log WHERE user_id LIKE 'test_user_%'")
-        db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_user_%'")
-        db.close_database()
-        print("已清理旧测试数据")
+    @classmethod
+    def _cleanup_all(cls):
+        db = cls.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
+            else:
+                need_close = False
+            db.execute_raw_sql("DELETE FROM t_points_log WHERE user_id LIKE %s", ("test_user_%",))
+            db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE %s", ("test_user_%",))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[_cleanup_all 警告] 清理失败: {e}")
 
-    test_user_id = f"test_user_{uuid.uuid4().hex[:8]}"
-    test_nickname = "测试用户"
-    test_avatar = "http://example.com/avatar.jpg"
+    # ---- 辅助方法 ----
 
-    print("\n" + "=" * 50 + "\n  开始测试 UserLibrary\n" + "=" * 50)
+    def _add_user(self, nickname=None, role=1, points=0, is_active=1, **kwargs):
+        """注册测试用户并返回 user_id"""
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        if nickname is None:
+            nickname = f"nick_{uid[:8]}"
+        r = self.lib.register_user(uid, nickname, avatar_url="http://x.com/a.jpg", role=role)
+        if not r.get("success"):
+            self.lib.delete_user(uid)
+            r = self.lib.register_user(uid, nickname, avatar_url="http://x.com/a.jpg", role=role)
+        if not r.get("success"):
+            raise RuntimeError(f"注册用户失败: {r}")
+        self.user_ids.append(uid)
+        # 设置积分和状态
+        if points != 0 or is_active != 1:
+            db = self.lib.db
+            if db.connection is None:
+                db.open_database()
+                need_close = True
+            else:
+                need_close = False
+            if points != 0:
+                db.execute_raw_sql("UPDATE t_user SET points = %s WHERE user_id = %s", (points, uid))
+            if is_active != 1:
+                db.execute_raw_sql("UPDATE t_user SET is_active = %s WHERE user_id = %s", (is_active, uid))
+            if need_close:
+                db.close_database()
+        return uid
 
-    # ========== 1. 注册用户 ==========
-    print("\n1. 测试注册用户 (register_user)...")
+    # ==================== register_user ====================
 
-    # 1.1 正常注册（普通用户）
-    success = user_lib.register_user(test_user_id, test_nickname, test_avatar, role=1)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user and user.role == 1 and user.volunteer_id is None and user.level is None:
-            log_pass(f"注册普通用户，user_id={test_user_id}", f"role=1, volunteer_id=None, level=None")
-        else:
-            log_fail("注册普通用户", f"role={user.role if user else '无'}, volunteer_id={user.volunteer_id if user else '无'}")
-    else:
-        log_fail("注册普通用户", "返回 False")
+    def test_register_user_success(self):
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        r = self.lib.register_user(uid, "测试用户", avatar_url="http://x.com/a.jpg", role=1)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["user_id"], uid)
+        self.user_ids.append(uid)
 
-    # 1.2 重复注册
-    success2 = user_lib.register_user(test_user_id, "重复注册", role=1)
-    if not success2:
-        log_pass("重复注册", "返回 False，预期行为")
-    else:
-        log_fail("重复注册", "返回 True，预期失败")
+    def test_register_user_duplicate(self):
+        uid = self._add_user()
+        r = self.lib.register_user(uid, "重复注册", role=1)
+        self.assertFalse(r["success"])
+        self.assertIn("已存在", r["message"])
 
-    # 1.3 非法角色
-    success3 = user_lib.register_user(f"test_user_{uuid.uuid4().hex[:8]}", "非法角色", role=99)
-    if not success3:
-        log_pass("注册非法角色(99)", "返回 False")
-    else:
-        log_fail("注册非法角色(99)", "返回 True")
+    def test_register_user_invalid_role(self):
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        r = self.lib.register_user(uid, "非法角色", role=99)
+        self.assertFalse(r["success"])
+        self.assertIn("角色", r["message"])
 
-    # 1.4 注册志愿者
-    vol_user_id = f"test_user_{uuid.uuid4().hex[:8]}"
-    success4 = user_lib.register_user(vol_user_id, "测试志愿者", role=2)
-    if success4:
-        user = user_lib.get_user_by_account(vol_user_id)
-        if user and user.role == 2 and user.volunteer_id and user.volunteer_id.startswith('VOL_') and user.level == 1:
-            log_pass(f"注册志愿者，user_id={vol_user_id}", f"role=2, volunteer_id={user.volunteer_id}, level=1")
-        else:
-            log_fail("注册志愿者", f"volunteer_id={user.volunteer_id if user else '无'}, level={user.level if user else '无'}")
-    else:
-        log_fail("注册志愿者", "返回 False")
+    def test_register_volunteer(self):
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        r = self.lib.register_user(uid, "测试志愿者", role=2)
+        self.assertTrue(r["success"])
+        profile = self.lib.get_user_profile(uid)
+        self.assertEqual(profile["data"]["role"], 2)
+        self.assertTrue(profile["data"]["volunteer_id"].startswith("VOL_"))
+        self.assertEqual(profile["data"]["level"], 1)
+        self.user_ids.append(uid)
 
-    # ========== 2. 查询用户 ==========
-    print("\n2. 测试查询用户 (get_user_by_account / verify_user_validity)...")
+    # ==================== get_user_by_account ====================
 
-    user = user_lib.get_user_by_account(test_user_id)
-    if user and user.user_id == test_user_id:
-        log_pass("查询存在用户", f"nickname={user.nickname}")
-    else:
-        log_fail("查询存在用户", "未找到")
+    def test_get_user_success(self):
+        uid = self._add_user(nickname="查询测试")
+        r = self.lib.get_user_by_account(uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["nickname"], "查询测试")
+        self.assertEqual(r["data"]["role"], 1)
 
-    none_user = user_lib.get_user_by_account("not_exist_123")
-    if none_user is None:
-        log_pass("查询不存在用户", "返回 None")
-    else:
-        log_fail("查询不存在用户", f"返回 {none_user}")
+    def test_get_user_not_found(self):
+        r = self.lib.get_user_by_account("not_exist_123")
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    if user_lib.verify_user_validity(test_user_id):
-        log_pass("验证有效用户", "返回 True")
-    else:
-        log_fail("验证有效用户", "返回 False")
+    # ==================== verify_user_validity ====================
 
-    if not user_lib.verify_user_validity("not_exist_123"):
-        log_pass("验证不存在用户", "返回 False")
-    else:
-        log_fail("验证不存在用户", "返回 True")
+    def test_verify_valid_user(self):
+        uid = self._add_user()
+        r = self.lib.verify_user_validity(uid)
+        self.assertTrue(r["success"])
+        self.assertTrue(r["data"]["is_valid"])
 
-    # ========== 3. 更新用户信息 ==========
-    print("\n3. 测试更新用户信息 (update_user_info)...")
+    def test_verify_not_exists(self):
+        r = self.lib.verify_user_validity("not_exist_123")
+        self.assertFalse(r["success"])
+        self.assertFalse(r["data"]["is_valid"])
 
-    # 3.1 正常更新白名单字段
-    success = user_lib.update_user_info(test_user_id, {'nickname': '新昵称', 'avatarURL': 'http://new.jpg'})
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.nickname == '新昵称' and user.avatarURL == 'http://new.jpg':
-            log_pass("更新昵称和头像", "更新成功")
-        else:
-            log_fail("更新昵称和头像", f"nickname={user.nickname}, avatarURL={user.avatarURL}")
-    else:
-        log_fail("更新昵称和头像", "返回 False")
+    def test_verify_banned_user(self):
+        uid = self._add_user(is_active=0)
+        r = self.lib.verify_user_validity(uid)
+        self.assertFalse(r["success"])
+        self.assertFalse(r["data"]["is_valid"])
 
-    # 3.2 更新非法字段（应被过滤）
-    old_points = user.points
-    success = user_lib.update_user_info(test_user_id, {'points': 99999, 'role': 3})
-    if not success:
-        log_pass("更新非法字段(points/role)", "被正确拒绝")
-    else:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.points == old_points and user.role == 1:
-            log_pass("更新非法字段", "字段被过滤，未修改")
-        else:
-            log_fail("更新非法字段", f"points={user.points}, role={user.role}")
+    # ==================== update_user_info ====================
 
-    # 3.3 更新不存在用户
-    if not user_lib.update_user_info("not_exist", {'nickname': 'test'}):
-        log_pass("更新不存在用户", "返回 False")
-    else:
-        log_fail("更新不存在用户", "返回 True")
+    def test_update_user_info_success(self):
+        uid = self._add_user()
+        r = self.lib.update_user_info(uid, {"nickname": "新昵称", "avatarURL": "http://new.jpg"})
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["nickname"], "新昵称")
+        self.assertEqual(user["data"]["avatarURL"], "http://new.jpg")
 
-    # ========== 4. 角色切换 ==========
-    print("\n4. 测试角色切换 (update_role)...")
+    def test_update_user_info_illegal_fields(self):
+        uid = self._add_user(points=100)
+        r = self.lib.update_user_info(uid, {"points": 99999, "role": 3})
+        self.assertFalse(r["success"])
+        self.assertIn("没有需要更新的有效字段", r["message"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 100)
+        self.assertEqual(user["data"]["role"], 1)
 
-    # 4.1 普通用户 -> 志愿者
-    success = user_lib.update_role(test_user_id, 2)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.role == 2 and user.volunteer_id and user.level == 1 and user.admin_id is None:
-            log_pass("1->2 切换志愿者", f"role=2, volunteer_id={user.volunteer_id}, level=1")
-        else:
-            log_fail("1->2 切换志愿者", f"role={user.role}, volunteer_id={user.volunteer_id}, level={user.level}")
-    else:
-        log_fail("1->2 切换志愿者", "返回 False")
+    def test_update_user_info_not_exists(self):
+        r = self.lib.update_user_info("not_exist", {"nickname": "test"})
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    # 4.2 志愿者 -> 管理员
-    old_vol_id = user_lib.get_user_by_account(test_user_id).volunteer_id
-    success = user_lib.update_role(test_user_id, 3)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.role == 3 and user.volunteer_id is None and user.level is None:
-            log_pass("2->3 切换管理员", f"role=3, volunteer_id=None, level=None")
-        else:
-            log_fail("2->3 切换管理员", f"role={user.role}, volunteer_id={user.volunteer_id}")
-    else:
-        log_fail("2->3 切换管理员", "返回 False")
+    # ==================== update_role ====================
 
-    # 4.3 管理员 -> 普通用户
-    success = user_lib.update_role(test_user_id, 1)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.role == 1 and user.volunteer_id is None and user.admin_id is None and user.level is None:
-            log_pass("3->1 切换普通用户", "role=1, 所有编号清空")
-        else:
-            log_fail("3->1 切换普通用户", f"role={user.role}, admin_id={user.admin_id}")
-    else:
-        log_fail("3->1 切换普通用户", "返回 False")
+    def test_update_role_to_volunteer(self):
+        uid = self._add_user(role=1)
+        r = self.lib.update_role(uid, 2)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["role"], 2)
+        self.assertIsNotNone(user["data"]["volunteer_id"])
+        self.assertEqual(user["data"]["level"], 1)
+        self.assertIsNone(user["data"]["admin_id"])
 
-    # 4.4 非法角色
-    if not user_lib.update_role(test_user_id, 99):
-        log_pass("切换非法角色(99)", "返回 False")
-    else:
-        log_fail("切换非法角色(99)", "返回 True")
+    def test_update_role_to_admin(self):
+        uid = self._add_user(role=2)
+        r = self.lib.update_role(uid, 3)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["role"], 3)
+        self.assertIsNone(user["data"]["volunteer_id"])
+        self.assertIsNone(user["data"]["level"])
 
-    # ========== 5. 设置管理员工号 ==========
-    print("\n5. 测试设置管理员工号 (set_admin_id)...")
+    def test_update_role_to_normal(self):
+        uid = self._add_user(role=3)
+        self.lib.set_admin_id(uid, "ADMIN_001")
+        r = self.lib.update_role(uid, 1)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["role"], 1)
+        self.assertIsNone(user["data"]["volunteer_id"])
+        self.assertIsNone(user["data"]["admin_id"])
+        self.assertIsNone(user["data"]["level"])
 
-    # 先切回管理员
-    user_lib.update_role(test_user_id, 3)
-    success = user_lib.set_admin_id(test_user_id, "ADMIN_001")
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.admin_id == "ADMIN_001":
-            log_pass("设置工号 ADMIN_001", "设置成功")
-        else:
-            log_fail("设置工号", f"admin_id={user.admin_id}")
-    else:
-        log_fail("设置工号", "返回 False")
+    def test_update_role_invalid(self):
+        uid = self._add_user()
+        r = self.lib.update_role(uid, 99)
+        self.assertFalse(r["success"])
+        self.assertIn("角色", r["message"])
 
-    # 5.2 给普通用户设置工号（应失败）
-    user_lib.update_role(test_user_id, 1)
-    if not user_lib.set_admin_id(test_user_id, "ADMIN_002"):
-        log_pass("给普通用户设工号", "返回 False，权限校验通过")
-    else:
-        log_fail("给普通用户设工号", "返回 True")
+    # ==================== set_admin_id ====================
 
-    # 5.3 空工号
-    user_lib.update_role(test_user_id, 3)
-    if not user_lib.set_admin_id(test_user_id, ""):
-        log_pass("设置空工号", "返回 False")
-    else:
-        log_fail("设置空工号", "返回 True")
+    def test_set_admin_id_success(self):
+        uid = self._add_user(role=3)
+        r = self.lib.set_admin_id(uid, "ADMIN_001")
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["admin_id"], "ADMIN_001")
 
-    # ========== 6. 积分系统 ==========
-    print("\n6. 测试积分系统 (add_points / get_points_history)...")
+    def test_set_admin_id_normal_user(self):
+        uid = self._add_user(role=1)
+        r = self.lib.set_admin_id(uid, "ADMIN_002")
+        self.assertFalse(r["success"])
+        self.assertIn("仅管理员", r["message"])
 
-    # 重置为普通用户，初始积分0
-    user_lib.update_role(test_user_id, 1)
-    user_lib._raw_update(test_user_id, {'points': 0})
+    def test_set_admin_id_empty(self):
+        uid = self._add_user(role=3)
+        r = self.lib.set_admin_id(uid, "")
+        self.assertFalse(r["success"])
+        self.assertIn("不能为空", r["message"])
 
-    # 6.1 增加积分
-    success = user_lib.add_points(test_user_id, 100, reason="签到奖励")
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.points == 100:
-            log_pass("增加积分 +100", "points=100")
-        else:
-            log_fail("增加积分 +100", f"points={user.points}")
-    else:
-        log_fail("增加积分 +100", "返回 False")
+    # ==================== toggle_active_status ====================
 
-    # 6.2 扣减积分
-    success = user_lib.add_points(test_user_id, -30, reason="兑换商品")
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.points == 70:
-            log_pass("扣减积分 -30", "points=70")
-        else:
-            log_fail("扣减积分 -30", f"points={user.points}")
-    else:
-        log_fail("扣减积分 -30", "返回 False")
+    def test_toggle_active_ban(self):
+        uid = self._add_user()
+        r = self.lib.toggle_active_status(uid, 0)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["is_active"], 0)
 
-    # 6.3 扣到负数（应失败）
-    if not user_lib.add_points(test_user_id, -999, reason="恶意扣减"):
-        log_pass("扣减至负数", "返回 False，边界保护生效")
-    else:
-        log_fail("扣减至负数", "返回 True，积分可能为负")
+    def test_toggle_active_unban(self):
+        uid = self._add_user(is_active=0)
+        r = self.lib.toggle_active_status(uid, 1)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["is_active"], 1)
 
-    # 6.4 查询积分流水
-    history = user_lib.get_points_history(test_user_id)
-    if isinstance(history, dict) and "logs" in history:
-        total = history.get("total", 0) if isinstance(history, dict) else len(history)
-        if total >= 2:
-            log_pass("查询积分流水", f"共 {total} 条记录")
-        else:
-            log_fail("查询积分流水", f"共 {total} 条，预期>=2")
-    else:
-        log_fail("查询积分流水", "查询失败")
+    def test_toggle_active_invalid(self):
+        uid = self._add_user()
+        r = self.lib.toggle_active_status(uid, 2)
+        self.assertFalse(r["success"])
+        self.assertIn("状态", r["message"])
 
-    # ========== 7. 封禁/注销/删除 ==========
-    print("\n7. 测试封禁/注销/删除...")
+    # ==================== deactivate_user ====================
 
-    # 7.1 封禁
-    success = user_lib.toggle_active_status(test_user_id, 0)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.is_active == 0:
-            log_pass("封禁用户", "is_active=0")
-        else:
-            log_fail("封禁用户", f"is_active={user.is_active}")
-    else:
-        log_fail("封禁用户", "返回 False")
+    def test_deactivate_user(self):
+        uid = self._add_user()
+        r = self.lib.deactivate_user(uid)
+        self.assertTrue(r["success"])
+        verify = self.lib.verify_user_validity(uid)
+        self.assertFalse(verify["data"]["is_valid"])
 
-    # 验证封禁后 verify_user_validity 返回 False
-    if not user_lib.verify_user_validity(test_user_id):
-        log_pass("验证封禁用户有效性", "返回 False")
-    else:
-        log_fail("验证封禁用户有效性", "返回 True")
+    # ==================== delete_user ====================
 
-    # 7.2 解封
-    user_lib.toggle_active_status(test_user_id, 1)
-    if user_lib.verify_user_validity(test_user_id):
-        log_pass("解封用户", "验证通过")
-    else:
-        log_fail("解封用户", "验证失败")
+    def test_delete_user_success(self):
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        self.lib.register_user(uid, "待删除", role=1)
+        r = self.lib.delete_user(uid)
+        self.assertTrue(r["success"])
+        get_r = self.lib.get_user_by_account(uid)
+        self.assertFalse(get_r["success"])
 
-    # 7.3 注销（逻辑删除）
-    success = user_lib.deactivate_user(test_user_id)
-    if success and not user_lib.verify_user_validity(test_user_id):
-        log_pass("注销用户", "is_active=0，验证失败")
-    else:
-        log_fail("注销用户", "失败")
+    def test_delete_user_not_found(self):
+        r = self.lib.delete_user("not_exist")
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    # 7.4 物理删除
-    del_user_id = f"test_user_{uuid.uuid4().hex[:8]}"
-    user_lib.register_user(del_user_id, "待删除用户", role=1)
-    success = user_lib.delete_user(del_user_id)
-    if success and user_lib.get_user_by_account(del_user_id) is None:
-        log_pass("物理删除用户", "删除成功")
-    else:
-        log_fail("物理删除用户", "失败")
+    # ==================== add_points ====================
 
-    # 7.5 删除不存在用户
-    if not user_lib.delete_user("not_exist"):
-        log_pass("删除不存在用户", "返回 False")
-    else:
-        log_fail("删除不存在用户", "返回 True")
+    def test_add_points_increase(self):
+        uid = self._add_user(points=0)
+        r = self.lib.add_points(uid, 100, reason="签到奖励")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["points"], 100)
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 100)
 
-    # 7.6 非法状态值
-    if not user_lib.toggle_active_status(test_user_id, 2):
-        log_pass("设置非法状态(2)", "返回 False")
-    else:
-        log_fail("设置非法状态(2)", "返回 True")
+    def test_add_points_decrease(self):
+        uid = self._add_user(points=100)
+        r = self.lib.add_points(uid, -30, reason="兑换商品")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["points"], 70)
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 70)
 
-    # ========== 8. 统计数据 ==========
-    print("\n8. 测试统计数据...")
+    def test_add_points_negative(self):
+        uid = self._add_user(points=10)
+        r = self.lib.add_points(uid, -999, reason="恶意扣减")
+        self.assertFalse(r["success"])
+        self.assertIn("积分不足", r["message"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 10)
 
-    # 恢复用户
-    user_lib.toggle_active_status(test_user_id, 1)
+    def test_add_points_not_found(self):
+        r = self.lib.add_points("not_exist", 100)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
 
-    # 8.1 全量更新
-    success = user_lib.update_user_stats(test_user_id, like_count=10, follower_count=5, following_count=3)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.like_count == 10 and user.follower_count == 5 and user.following_count == 3:
-            log_pass("全量更新统计", "like=10, follower=5, following=3")
-        else:
-            log_fail("全量更新统计", f"like={user.like_count}, follower={user.follower_count}")
-    else:
-        log_fail("全量更新统计", "返回 False")
+    # ==================== get_points_history ====================
 
-    # 8.2 部分更新
-    success = user_lib.update_user_stats(test_user_id, like_count=20)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.like_count == 20 and user.follower_count == 5:
-            log_pass("部分更新统计", "like=20, follower保持5")
-        else:
-            log_fail("部分更新统计", f"like={user.like_count}, follower={user.follower_count}")
+    def test_get_points_history(self):
+        uid = self._add_user(points=0)
+        self.lib.add_points(uid, 100, reason="签到")
+        self.lib.add_points(uid, -30, reason="兑换")
+        r = self.lib.get_points_history(uid)
+        self.assertTrue(r["success"])
+        self.assertGreaterEqual(r["data"]["total"], 2)
+        self.assertGreaterEqual(len(r["data"]["logs"]), 2)
 
-    # 8.3 负数截断
-    success = user_lib.update_user_stats(test_user_id, like_count=-5)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.like_count == 0:
-            log_pass("负数截断", "like_count=0")
-        else:
-            log_fail("负数截断", f"like_count={user.like_count}")
+    def test_get_points_history_empty(self):
+        uid = self._add_user()
+        r = self.lib.get_points_history(uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 0)
+        self.assertEqual(len(r["data"]["logs"]), 0)
 
-    # 8.4 原子增量
-    success = user_lib.increment_user_stats(test_user_id, like_delta=5, follower_delta=-2)
-    if success:
-        user = user_lib.get_user_by_account(test_user_id)
-        if user.like_count == 5 and user.follower_count == 3:
-            log_pass("原子增量", "like=5, follower=3")
-        else:
-            log_fail("原子增量", f"like={user.like_count}, follower={user.follower_count}")
+    # ==================== update_user_stats ====================
 
-    # ========== 9. 志愿者排行榜 ==========
-    print("\n9. 测试志愿者排行榜...")
+    def test_update_stats_all(self):
+        uid = self._add_user()
+        r = self.lib.update_user_stats(uid, like_count=10, follower_count=5, following_count=3)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["like_count"], 10)
+        self.assertEqual(user["data"]["follower_count"], 5)
+        self.assertEqual(user["data"]["following_count"], 3)
 
-    # 准备数据：创建高分和低分志愿者
-    top_id = f"test_user_{uuid.uuid4().hex[:8]}"
-    low_id = f"test_user_{uuid.uuid4().hex[:8]}"
-    user_lib.register_user(top_id, "高分志愿者", role=2)
-    user_lib.register_user(low_id, "低分志愿者", role=2)
-    user_lib.add_points(top_id, 1000)
-    user_lib.add_points(low_id, 10)
+    def test_update_stats_partial(self):
+        uid = self._add_user()
+        self.lib.update_user_stats(uid, like_count=10, follower_count=5)
+        r = self.lib.update_user_stats(uid, like_count=20)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["like_count"], 20)
+        self.assertEqual(user["data"]["follower_count"], 5)
 
-    ranking = user_lib.get_volunteers_ranking(limit=10)
-    if ranking and len(ranking) >= 2:
+    def test_update_stats_negative_clamp(self):
+        uid = self._add_user()
+        r = self.lib.update_user_stats(uid, like_count=-5)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["like_count"], 0)
+
+    def test_update_stats_no_fields(self):
+        uid = self._add_user()
+        r = self.lib.update_user_stats(uid)
+        self.assertFalse(r["success"])
+        self.assertIn("没有需要更新的统计字段", r["message"])
+
+    # ==================== increment_user_stats ====================
+
+    def test_increment_stats(self):
+        uid = self._add_user()
+        self.lib.update_user_stats(uid, like_count=10, follower_count=5)
+        r = self.lib.increment_user_stats(uid, like_delta=5, follower_delta=-2)
+        self.assertTrue(r["success"])
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["like_count"], 15)
+        self.assertEqual(user["data"]["follower_count"], 3)
+
+    def test_increment_stats_no_fields(self):
+        uid = self._add_user()
+        r = self.lib.increment_user_stats(uid)
+        self.assertFalse(r["success"])
+        self.assertIn("没有需要更新的统计字段", r["message"])
+
+    # ==================== get_user_profile ====================
+
+    def test_get_profile_success(self):
+        uid = self._add_user(nickname="个人主页测试")
+        r = self.lib.get_user_profile(uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["user_id"], uid)
+        self.assertEqual(r["data"]["nickname"], "个人主页测试")
+
+    def test_get_profile_not_found(self):
+        r = self.lib.get_user_profile("not_exist")
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== get_volunteers_ranking ====================
+
+    def test_get_volunteers_ranking(self):
+        top_id = self._add_user(nickname="高分志愿者", role=2, points=1000)
+        low_id = self._add_user(nickname="低分志愿者", role=2, points=10)
+        r = self.lib.get_volunteers_ranking(limit=10)
+        self.assertTrue(r["success"])
+        volunteers = r["data"]["volunteers"]
+        self.assertGreaterEqual(len(volunteers), 2)
         # 验证排序：高分在前
-        points_list = [u.points for u in ranking]
-        if points_list == sorted(points_list, reverse=True):
-            log_pass("排行榜排序", "按积分降序正确")
-        else:
-            log_fail("排行榜排序", f"顺序错误: {points_list}")
-
+        points_list = [v["points"] for v in volunteers]
+        self.assertEqual(points_list, sorted(points_list, reverse=True))
         # 验证高分志愿者在榜
-        top_in_rank = any(u.user_id == top_id for u in ranking)
-        if top_in_rank:
-            log_pass("高分志愿者在榜", f"points={next(u.points for u in ranking if u.user_id == top_id)}")
-        else:
-            log_fail("高分志愿者在榜", "未找到")
-    else:
-        log_fail("排行榜", f"共 {len(ranking)} 条，预期>=2")
+        self.assertIn(top_id, [v["user_id"] for v in volunteers])
 
-    # 9.2 封禁的志愿者不应出现在榜
-    user_lib.toggle_active_status(top_id, 0)
-    ranking2 = user_lib.get_volunteers_ranking(limit=10)
-    if not any(u.user_id == top_id for u in ranking2):
-        log_pass("封禁志愿者不在榜", "过滤正确")
-    else:
-        log_fail("封禁志愿者不在榜", "仍在排行榜中")
+    def test_get_volunteers_ranking_banned_excluded(self):
+        top_id = self._add_user(nickname="高分志愿者", role=2, points=1000)
+        self.lib.toggle_active_status(top_id, 0)
+        r = self.lib.get_volunteers_ranking(limit=10)
+        self.assertTrue(r["success"])
+        volunteers = r["data"]["volunteers"]
+        self.assertNotIn(top_id, [v["user_id"] for v in volunteers])
 
-    # ========== 10. 个人主页 ==========
-    print("\n10. 测试个人主页 (get_user_profile)...")
+    # ==================== DB 连接失败（批量覆盖） ====================
 
-    profile = user_lib.get_user_profile(test_user_id)
-    if profile and profile['user_id'] == test_user_id:
-        log_pass("获取个人主页", f"nickname={profile['nickname']}, points={profile['points']}")
-    else:
-        log_fail("获取个人主页", "失败")
+    def test_db_connection_fail(self):
+        """所有需要数据库的方法在连接失败时均返回错误"""
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.get_user_by_account("x")["success"])
+            self.assertFalse(self.lib.register_user("x", "n")["success"])
+            self.assertFalse(self.lib.update_user_info("x", {"nickname": "n"})["success"])
+            self.assertFalse(self.lib.update_role("x", 2)["success"])
+            self.assertFalse(self.lib.set_admin_id("x", "A")["success"])
+            self.assertFalse(self.lib.toggle_active_status("x", 0)["success"])
+            self.assertFalse(self.lib.deactivate_user("x")["success"])
+            self.assertFalse(self.lib.delete_user("x")["success"])
+            self.assertFalse(self.lib.add_points("x", 100)["success"])
+            self.assertFalse(self.lib.get_points_history("x")["success"])
+            self.assertFalse(self.lib.update_user_stats("x", like_count=1)["success"])
+            self.assertFalse(self.lib.increment_user_stats("x", like_delta=1)["success"])
+            self.assertFalse(self.lib.get_user_profile("x")["success"])
+            self.assertFalse(self.lib.get_volunteers_ranking()["success"])
 
-    none_profile = user_lib.get_user_profile("not_exist")
-    if none_profile is None:
-        log_pass("获取不存在用户主页", "返回 None")
-    else:
-        log_fail("获取不存在用户主页", "返回非空")
+    # ==================== 综合业务场景 ====================
 
-    # ========== 11. 清理测试数据 ==========
-    print("\n11. 清理测试数据...")
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_points_log WHERE user_id LIKE 'test_user_%'")
-        db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_user_%'")
-        db.close_database()
-        log_pass("清理测试数据", "完成")
-    else:
-        log_fail("清理测试数据", "数据库连接失败")
+    def test_full_lifecycle(self):
+        """完整生命周期：注册 → 查询 → 更新信息 → 加积分 → 切换角色 → 设置工号 → 封禁 → 解封 → 删除"""
+        uid = f"test_user_{uuid.uuid4().hex[:8]}"
+        # 注册
+        r = self.lib.register_user(uid, "生命周期用户", role=1)
+        self.assertTrue(r["success"])
+        self.user_ids.append(uid)
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+        # 查询
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["nickname"], "生命周期用户")
+
+        # 更新信息
+        self.lib.update_user_info(uid, {"nickname": "已更新"})
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["nickname"], "已更新")
+
+        # 加积分
+        self.lib.add_points(uid, 500)
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 500)
+
+        # 切换为志愿者
+        self.lib.update_role(uid, 2)
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["role"], 2)
+
+        # 切换为管理员 + 设置工号
+        self.lib.update_role(uid, 3)
+        self.lib.set_admin_id(uid, "ADMIN_999")
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["admin_id"], "ADMIN_999")
+
+        # 封禁
+        self.lib.toggle_active_status(uid, 0)
+        verify = self.lib.verify_user_validity(uid)
+        self.assertFalse(verify["data"]["is_valid"])
+
+        # 解封
+        self.lib.toggle_active_status(uid, 1)
+        verify = self.lib.verify_user_validity(uid)
+        self.assertTrue(verify["data"]["is_valid"])
+
+        # 删除
+        self.lib.delete_user(uid)
+        self.user_ids.remove(uid)
+        get_r = self.lib.get_user_by_account(uid)
+        self.assertFalse(get_r["success"])
+
+    def test_points_flow_integrity(self):
+        """积分流水完整性验证"""
+        uid = self._add_user(points=0)
+        self.lib.add_points(uid, 100, reason="奖励")
+        self.lib.add_points(uid, -20, reason="消费")
+        self.lib.add_points(uid, 50, reason="奖励2")
+
+        history = self.lib.get_points_history(uid)
+        self.assertEqual(history["data"]["total"], 3)
+
+        user = self.lib.get_user_by_account(uid)
+        self.assertEqual(user["data"]["points"], 130)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)
