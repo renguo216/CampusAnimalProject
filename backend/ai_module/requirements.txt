@@ -8,4 +8,4 @@ flask-cors==6.0.2
 path = r'D:\jupyter\CampusAnimalProject\backend\ai_module\requirements.txt'
 with open(path, 'w', encoding='utf-8') as f:
     f.write(req_code)
-print("✅ requirements.txt 已更新")
+print("requirements.txt 已更新")
