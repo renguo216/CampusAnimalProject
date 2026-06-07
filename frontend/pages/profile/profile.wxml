@@ -1,13 +1,12 @@
 <view class="profile-container">
   <view class="header-section">
     <view class="user-info">
-      <image class="avatar" src="{{userInfo.avatarUrl || '/images/default-avatar.png'}}" />
+      <image class="avatar" src="{{userInfo.avatarURL || '/images/default-avatar.png'}}" />
       <view class="user-detail">
         <text class="nickname">{{userInfo.nickname || '爱心志愿者'}}</text>
         <view class="user-badges">
-          <text class="badge volunteer" wx:if="{{userInfo.role === 'volunteer'}}">🌟 志愿者</text>
-          <text class="badge member">⭐ 爱心会员</text>
-          <text class="badge level">Lv.{{userInfo.level || 1}}</text>
+          <text class="badge volunteer" wx:if="{{userInfo.role === 2}}">🌟 志愿者</text>
+          <text class="badge level" wx:if="{{userInfo.role === 2}}">Lv.{{userInfo.level || 1}}</text>
         </view>
       </view>
       <view class="edit-btn" bindtap="goToEditProfile">
@@ -43,12 +42,6 @@
         <text>📝</text>
       </view>
       <text class="action-text">我上报的</text>
-    </view>
-    <view class="action-item" bindtap="goToMyHelps">
-      <view class="action-icon bg-blue">
-        <text>🤝</text>
-      </view>
-      <text class="action-text">我帮助的</text>
     </view>
     <view class="action-item" bindtap="goToMyAdoptions">
       <view class="action-icon bg-pink">

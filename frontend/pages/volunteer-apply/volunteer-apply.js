@@ -2,121 +2,107 @@ const api = require('../../utils/api.js');
 
 Page({
   data: {
-    name: '',
-    studentId: '',
-    phone: '',
-    major: '',
-    serviceTypes: [],
-    intro: '',
-    availableTime: [],
-    isAgreed: false
+    userInfo: null,
+    loading: false,
+    applyContent: '',
+    isAgreed: false,
+    isAlreadyVolunteer: false
+  },
+
+  onLoad: function() {
+    this.checkUserRole();
   },
 
   goBack: function() {
     wx.navigateBack();
   },
 
-  onNameInput: function(e) {
-    this.setData({ name: e.detail.value });
-  },
-
-  onStudentIdInput: function(e) {
-    this.setData({ studentId: e.detail.value });
-  },
-
-  onPhoneInput: function(e) {
-    this.setData({ phone: e.detail.value });
-  },
-
-  onMajorInput: function(e) {
-    this.setData({ major: e.detail.value });
-  },
-
-  onIntroInput: function(e) {
-    this.setData({ intro: e.detail.value });
-  },
-
-  toggleServiceType: function(e) {
-    const type = e.currentTarget.dataset.type;
-    const serviceTypes = [...this.data.serviceTypes];
-    const index = serviceTypes.indexOf(type);
-    
-    if (index > -1) {
-      serviceTypes.splice(index, 1);
-    } else {
-      serviceTypes.push(type);
+  checkUserRole: function() {
+    const userInfo = wx.getStorageSync('userInfo');
+    console.log('当前用户信息:', userInfo);
+    if (!userInfo || !userInfo.user_id) {
+      wx.showToast({ title: '请先登录', icon: 'none' });
+      return;
     }
     
-    this.setData({ serviceTypes });
-  },
-
-  toggleTime: function(e) {
-    const time = e.currentTarget.dataset.time;
-    const availableTime = [...this.data.availableTime];
-    const index = availableTime.indexOf(time);
+    this.setData({ userInfo: userInfo });
     
-    if (index > -1) {
-      availableTime.splice(index, 1);
-    } else {
-      availableTime.push(time);
+    // 检查用户角色：role=2 表示志愿者
+    if (userInfo.role === 2) {
+      this.setData({ isAlreadyVolunteer: true });
+      wx.showModal({
+        title: '已是志愿者',
+        content: '您已经是志愿者，无需重复申请。',
+        showCancel: false,
+        success: () => {
+          wx.navigateBack();
+        }
+      });
+      return;
     }
     
-    this.setData({ availableTime });
+    // role=3 表示管理员
+    if (userInfo.role === 3) {
+      wx.showModal({
+        title: '提示',
+        content: '管理员身份无需申请志愿者。',
+        showCancel: false,
+        success: () => {
+          wx.navigateBack();
+        }
+      });
+      return;
+    }
   },
 
-  onAgreementChange: function(e) {
-    this.setData({ isAgreed: e.detail.value.length > 0 });
+  loadUserInfo: function() {
+    const userInfo = wx.getStorageSync('userInfo');
+    console.log('当前用户信息:', userInfo);
+    if (userInfo) {
+      this.setData({ userInfo: userInfo });
+    }
   },
 
   submitApplication: async function() {
-    if (!this.data.name) {
-      wx.showToast({ title: '请输入姓名', icon: 'none' });
+    console.log('=== 提交志愿者申请 ===');
+    console.log('当前数据:', this.data);
+    
+    const { userInfo } = this.data;
+    
+    if (!userInfo || !userInfo.user_id) {
+      wx.showToast({ title: '请先登录', icon: 'none' });
       return;
     }
-    if (!this.data.studentId) {
-      wx.showToast({ title: '请输入学号', icon: 'none' });
+
+    console.log('申请理由:', this.data.applyContent);
+    if (!this.data.applyContent || this.data.applyContent.trim().length === 0) {
+      wx.showToast({ title: '请输入申请理由', icon: 'none' });
       return;
     }
-    if (!this.data.phone || !/^1[3-9]\d{9}$/.test(this.data.phone)) {
-      wx.showToast({ title: '请输入正确的手机号', icon: 'none' });
-      return;
-    }
-    if (!this.data.major) {
-      wx.showToast({ title: '请输入专业', icon: 'none' });
-      return;
-    }
-    if (this.data.serviceTypes.length === 0) {
-      wx.showToast({ title: '请选择志愿服务类型', icon: 'none' });
-      return;
-    }
-    if (!this.data.intro) {
-      wx.showToast({ title: '请输入个人简介', icon: 'none' });
-      return;
-    }
-    if (this.data.availableTime.length === 0) {
-      wx.showToast({ title: '请选择志愿服务时间', icon: 'none' });
-      return;
-    }
+
+    console.log('是否同意协议:', this.data.isAgreed);
     if (!this.data.isAgreed) {
       wx.showToast({ title: '请先阅读并同意相关协议', icon: 'none' });
       return;
     }
 
     try {
+      this.setData({ loading: true });
       wx.showLoading({ title: '提交中...' });
       
       const applicationData = {
-        name: this.data.name,
-        studentId: this.data.studentId,
-        phone: this.data.phone,
-        major: this.data.major,
-        serviceTypes: this.data.serviceTypes,
-        intro: this.data.intro,
-        availableTime: this.data.availableTime
+        user_id: userInfo.user_id,
+        nickname: userInfo.nickname || '',
+        phone_number: userInfo.phone_number || '',
+        apply_content: this.data.applyContent
       };
-      
-      setTimeout(() => {
-        wx.hideLoading();
+
+      console.log('准备提交的数据:', applicationData);
+      const result = await api.applyVolunteer(applicationData);
+      console.log('API 返回结果:', result);
+      wx.hideLoading();
+
+      if (result.success) {
         wx.showModal({
           title: '提交成功',
           content: '您的志愿者申请已提交，请耐心等待审核。',
@@ -125,10 +111,26 @@ Page({
             wx.navigateBack();
           }
         });
-      }, 1500);
+      } else {
+        wx.showToast({ title: result.message || '提交失败', icon: 'none' });
+      }
     } catch (error) {
       wx.hideLoading();
-      wx.showToast({ title: '提交失败', icon: 'none' });
+      console.error('提交异常:', error);
+      wx.showToast({ title: '提交失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ loading: false });
     }
+  },
+
+  onContentInput: function(e) {
+    this.setData({ applyContent: e.detail.value });
+  },
+
+  onAgreementChange: function(e) {
+    console.log('协议勾选变更:', e.detail.value);
+    const isAgreed = e.detail.value && e.detail.value.includes('agree');
+    this.setData({ isAgreed: isAgreed });
+    console.log('更新后的 isAgreed:', isAgreed);
   }
 });

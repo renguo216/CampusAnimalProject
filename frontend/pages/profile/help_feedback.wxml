@@ -1,0 +1,54 @@
+<view class="container">
+  <view class="header">
+    <text class="title">帮助与反馈</text>
+  </view>
+
+  <view class="section">
+    <view class="section-title">常见问题</view>
+    <view class="help-list">
+      <view class="help-item"
+            wx:for="{{helpList}}"
+            wx:key="id"
+            bindtap="expandHelp"
+            data-index="{{index}}">
+        <view class="help-question">
+          <text>{{item.title}}</text>
+          <text class="arrow {{item.expanded ? 'expanded' : ''}}">›</text>
+        </view>
+        <view class="help-answer" wx:if="{{item.expanded}}">
+          <text>{{item.content}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">提交反馈</view>
+    <form bindsubmit="submitFeedback">
+      <view class="form-item">
+        <textarea name="content"
+                  class="feedback-input"
+                  placeholder="请输入您的反馈内容..."
+                  maxlength="500"></textarea>
+      </view>
+      <view class="form-item">
+        <input name="contact"
+               class="contact-input"
+               placeholder="联系方式（选填）"
+               type="text"></input>
+      </view>
+      <button form-type="submit" class="submit-btn">提交反馈</button>
+    </form>
+  </view>
+
+  <view class="section" wx:if="{{feedbackHistory.length > 0}}">
+    <view class="section-title">我的反馈记录</view>
+    <view class="history-list">
+      <view class="history-item" wx:for="{{feedbackHistory}}" wx:key="id">
+        <view class="history-content">{{item.content}}</view>
+        <view class="history-time">{{item.createTime}}</view>
+        <view class="history-status">状态：{{item.statusText}}</view>
+      </view>
+    </view>
+  </view>
+</view>

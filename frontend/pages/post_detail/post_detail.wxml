@@ -1,0 +1,82 @@
+<view class="detail-container">
+  <view class="header">
+    <view class="header-content">
+      <view class="back-btn" bindtap="goBack">
+        <text>←</text>
+      </view>
+      <text class="header-title">帖子详情</text>
+    </view>
+  </view>
+  
+  <scroll-view class="scroll-content" scroll-y>
+    <view class="post-card">
+      <view class="post-header">
+        <image class="post-avatar" src="{{post.avatar}}" mode="aspectFill" />
+        <view class="post-author">
+          <text class="author-name">{{post.author}}</text>
+          <text class="author-time">{{post.createTime}}</text>
+        </view>
+      </view>
+      
+      <text class="post-content">{{post.content}}</text>
+      
+      <view class="post-images" wx:if="{{post.images && post.images.length > 0}}">
+        <image 
+          class="post-image" 
+          wx:for="{{post.images}}" 
+          wx:key="index" 
+          src="{{item}}" 
+          mode="widthFix" 
+          bindtap="previewImage" 
+          data-images="{{post.images}}" 
+          data-index="{{index}}" 
+        />
+      </view>
+      
+      <view class="post-actions">
+        <view class="action-item {{post.isLiked ? 'liked' : ''}}" bindtap="toggleLike">
+          <text class="action-icon">{{post.isLiked ? '❤️' : '🤍'}}</text>
+          <text class="action-count">{{post.likes}}</text>
+        </view>
+        <view class="action-item" bindtap="focusComment">
+          <text class="action-icon">💬</text>
+          <text class="action-count">{{comments.length}}</text>
+        </view>
+      </view>
+    </view>
+    
+    <view class="comments-section">
+      <view class="section-title">
+        <text>评论 ({{comments.length}})</text>
+      </view>
+      
+      <view class="comment-item" wx:for="{{comments}}" wx:key="id">
+        <image class="comment-avatar" src="{{item.avatar}}" mode="aspectFill" />
+        <view class="comment-body">
+          <view class="comment-header">
+            <text class="comment-author">{{item.author}}</text>
+            <text class="comment-time">{{item.time}}</text>
+          </view>
+          <text class="comment-text">{{item.content}}</text>
+        </view>
+      </view>
+      
+      <view class="empty-section" wx:if="{{comments.length === 0}}">
+        <text>暂无评论，快来抢沙发吧~</text>
+      </view>
+    </view>
+  </scroll-view>
+  
+  <view class="comment-input-area">
+    <input 
+      class="comment-input" 
+      placeholder="写评论..." 
+      value="{{commentText}}" 
+      bindinput="onCommentInput"
+      focus="{{commentFocused}}"
+    />
+    <view class="send-btn {{commentText.trim() ? 'active' : ''}}" bindtap="submitComment">
+      <text>发送</text>
+    </view>
+  </view>
+</view>

@@ -6,6 +6,7 @@
 
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
 import uuid
 
 
@@ -39,31 +40,27 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 验证用户是否存在且激活
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("is_active") == 0:
-                return {"success": False, "message": "用户已被封禁，无法捐赠", "data": None}
+                return error_response("用户已被封禁，无法捐赠")
 
             # 2. 验证募捐项目是否存在且进行中
             project = self.db.get_by_id("t_donation_project", "project_id", project_id)
             if not project:
-                return {"success": False, "message": "募捐项目不存在", "data": None}
+                return error_response("募捐项目不存在")
             if project.get("status") == 0:
-                return {"success": False, "message": "募捐项目已结束，无法捐赠", "data": None}
+                return error_response("募捐项目已结束，无法捐赠")
 
             # 3. 检查重复捐赠
             dup_result = self.check_duplicate_donation(user_id, project_id)
             if dup_result.get("data", {}).get("is_duplicate"):
-                return {
-                    "success": False,
-                    "message": "您已对该项目提交过捐赠，请勿重复提交",
-                    "data": {"donation_id": dup_result["data"]["donation_id"]}
-                }
+                return error_response("您已对该项目提交过捐赠，请勿重复提交", data={"donation_id": dup_result["data"]["donation_id"]})
 
             # 4. 生成捐赠单号，插入捐赠记录
             donation_id = str(uuid.uuid4()).replace("-", "")[:32]
@@ -77,7 +74,7 @@ class DonationLibrary:
                 "status": 0
             }
             if not self.db.insert("t_donation", donation_data):
-                return {"success": False, "message": "插入捐赠记录失败", "data": None}
+                return error_response("插入捐赠记录失败")
 
             # 5. 更新项目统计（已筹金额 + 参与人数）
             update_data = {
@@ -85,20 +82,19 @@ class DonationLibrary:
                 "participant_count": project.get("participant_count", 0) + 1
             }
             if not self.db.update("t_donation_project", "project_id", project_id, update_data):
-                return {"success": False, "message": "更新项目统计失败，请联系管理员", "data": None}
+                return error_response("更新项目统计失败，请联系管理员")
 
-            return {
-                "success": True,
-                "message": "捐赠提交成功，等待管理员确认",
-                "data": {
+            return success_response(
+                "捐赠提交成功，等待管理员确认",
+                data={
                     "donation_id": donation_id,
                     "amount": float(amount),
                     "status": 0,
                     "created_at": now.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"提交捐赠失败：{str(e)}", "data": None}
+            return error_response(f"提交捐赠失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -118,21 +114,21 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 查询捐赠记录
             donation = self.db.get_by_id("t_donation", "donation_id", donation_id)
             if not donation:
-                return {"success": False, "message": "捐赠记录不存在", "data": None}
+                return error_response("捐赠记录不存在")
 
             # 2. 验证状态是否为待确认
             if donation.get("status") != 0:
-                return {"success": False, "message": "仅待确认的捐赠可以取消", "data": None}
+                return error_response("仅待确认的捐赠可以取消")
 
             # 3. 验证所有权
             if donation.get("user_id") != user_id:
-                return {"success": False, "message": "无权取消他人的捐赠", "data": None}
+                return error_response("无权取消他人的捐赠")
 
             # 4. 更新捐赠状态为已取消
             now = datetime.now()
@@ -141,7 +137,7 @@ class DonationLibrary:
                 "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_donation", "donation_id", donation_id, update_donation_data):
-                return {"success": False, "message": "更新捐赠状态失败", "data": None}
+                return error_response("更新捐赠状态失败")
 
             # 5. 回滚项目统计
             project = self.db.get_by_id("t_donation_project", "project_id", donation.get("project_id"))
@@ -154,17 +150,16 @@ class DonationLibrary:
                 }
                 self.db.update("t_donation_project", "project_id", donation.get("project_id"), update_project_data)
 
-            return {
-                "success": True,
-                "message": "捐赠已取消",
-                "data": {
+            return success_response(
+                "捐赠已取消",
+                data={
                     "donation_id": donation_id,
                     "status": 3,
                     "cancelled_at": now.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"取消捐赠失败：{str(e)}", "data": None}
+            return error_response(f"取消捐赠失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -183,12 +178,12 @@ class DonationLibrary:
                               reviewed_by, reviewed_at, review_comment, created_at
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             donation = self.db.get_by_id("t_donation", "donation_id", donation_id)
             if not donation:
-                return {"success": False, "message": "捐赠记录不存在", "data": None}
+                return error_response("捐赠记录不存在")
 
             user = self.db.get_by_id("t_user", "user_id", donation.get("user_id"))
             project = self.db.get_by_id("t_donation_project", "project_id", donation.get("project_id"))
@@ -207,9 +202,9 @@ class DonationLibrary:
                 "review_comment": donation.get("review_comment"),
                 "created_at": donation.get("created_at").strftime("%Y-%m-%d %H:%M:%S") if donation.get("created_at") else None
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询捐赠详情失败：{str(e)}", "data": None}
+            return error_response(f"查询捐赠详情失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -227,7 +222,7 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": {"donations": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -241,7 +236,7 @@ class DonationLibrary:
 
             if not result or not result.get("data"):
                 data = {"donations": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             donations = result["data"]
             donation_list = []
@@ -269,9 +264,9 @@ class DonationLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询用户捐赠记录失败：{str(e)}", "data": None}
+            return error_response(f"查询用户捐赠记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -289,7 +284,7 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": {"donations": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -303,7 +298,7 @@ class DonationLibrary:
 
             if not result or not result.get("data"):
                 data = {"donations": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             donations = result["data"]
             donation_list = []
@@ -331,9 +326,9 @@ class DonationLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询项目捐赠记录失败：{str(e)}", "data": None}
+            return error_response(f"查询项目捐赠记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -352,7 +347,7 @@ class DonationLibrary:
         should_close = False
         if not self.db.connection:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             should_close = True
 
         try:
@@ -360,29 +355,21 @@ class DonationLibrary:
                 table_name="t_donation",
                 page=1,
                 page_size=1,
-                where_clause="user_id = %s AND project_id = %s AND status IN (0, 1)",
+                where_clause="user_id = %s AND project_id = %s AND status = 0",
                 params=(user_id, project_id),
                 order_by=None
             )
 
             if result and result.get("data") and len(result["data"]) > 0:
                 donation_row = result["data"][0]
-                return {
-                    "success": True,
-                    "message": "已存在未完成的捐赠记录",
-                    "data": {
-                        "is_duplicate": True,
-                        "donation_id": donation_row["donation_id"]
-                    }
-                }
+                return success_response(
+                    "已存在未完成的捐赠记录",
+                    data={"is_duplicate": True, "donation_id": donation_row["donation_id"]}
+                )
             else:
-                return {
-                    "success": True,
-                    "message": "未发现重复捐赠",
-                    "data": {"is_duplicate": False, "donation_id": None}
-                }
+                return success_response("未发现重复捐赠", data={"is_duplicate": False, "donation_id": None})
         except Exception as e:
-            return {"success": False, "message": f"查重失败：{str(e)}", "data": None}
+            return error_response(f"查重失败：{str(e)}")
         finally:
             if should_close:
                 self.db.close_database()
@@ -403,15 +390,15 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             donation = self.db.get_by_id("t_donation", "donation_id", donation_id)
             if not donation:
-                return {"success": False, "message": "捐赠记录不存在", "data": None}
+                return error_response("捐赠记录不存在")
 
             if donation.get("status") != 0:
-                return {"success": False, "message": "仅待确认的捐赠可以进行到账确认", "data": None}
+                return error_response("仅待确认的捐赠可以进行到账确认")
 
             now = datetime.now()
             update_data = {
@@ -420,20 +407,19 @@ class DonationLibrary:
                 "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_donation", "donation_id", donation_id, update_data):
-                return {"success": False, "message": "确认到账失败", "data": None}
+                return error_response("确认到账失败")
 
-            return {
-                "success": True,
-                "message": "捐赠已确认到账",
-                "data": {
+            return success_response(
+                "捐赠已确认到账",
+                data={
                     "donation_id": donation_id,
                     "status": 1,
                     "reviewed_by": admin_id,
                     "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"确认捐赠失败：{str(e)}", "data": None}
+            return error_response(f"确认捐赠失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -453,15 +439,15 @@ class DonationLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             donation = self.db.get_by_id("t_donation", "donation_id", donation_id)
             if not donation:
-                return {"success": False, "message": "捐赠记录不存在", "data": None}
+                return error_response("捐赠记录不存在")
 
             if donation.get("status") != 0:
-                return {"success": False, "message": "仅待确认的捐赠可以驳回", "data": None}
+                return error_response("仅待确认的捐赠可以驳回")
 
             now = datetime.now()
             update_donation_data = {
@@ -471,7 +457,7 @@ class DonationLibrary:
                 "review_comment": reason
             }
             if not self.db.update("t_donation", "donation_id", donation_id, update_donation_data):
-                return {"success": False, "message": "驳回捐赠失败", "data": None}
+                return error_response("驳回捐赠失败")
 
             project = self.db.get_by_id("t_donation_project", "project_id", donation.get("project_id"))
             if project:
@@ -483,19 +469,18 @@ class DonationLibrary:
                 }
                 self.db.update("t_donation_project", "project_id", donation.get("project_id"), update_project_data)
 
-            return {
-                "success": True,
-                "message": "捐赠已驳回",
-                "data": {
+            return success_response(
+                "捐赠已驳回",
+                data={
                     "donation_id": donation_id,
                     "status": 2,
                     "reviewed_by": admin_id,
                     "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S"),
                     "review_comment": reason
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"驳回捐赠失败：{str(e)}", "data": None}
+            return error_response(f"驳回捐赠失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -516,7 +501,7 @@ class DonationLibrary:
             }}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -538,7 +523,7 @@ class DonationLibrary:
                     "rejected_count": 0,
                     "cancelled_count": 0
                 }
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             rows = result["data"]
             total_amount = sum(float(r.get("amount", 0)) for r in rows)
@@ -559,9 +544,9 @@ class DonationLibrary:
                 "rejected_count": rejected_count,
                 "cancelled_count": cancelled_count
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"获取统计信息失败：{str(e)}", "data": None}
+            return error_response(f"获取统计信息失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -583,7 +568,7 @@ class DonationLibrary:
             }}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             where_clause = None
@@ -603,7 +588,7 @@ class DonationLibrary:
 
             if not result or not result.get("data"):
                 data = {"donations": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             donations = result["data"]
             donation_list = []
@@ -631,9 +616,9 @@ class DonationLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"获取所有捐赠记录失败：{str(e)}", "data": None}
+            return error_response(f"获取所有捐赠记录失败：{str(e)}")
         finally:
             self.db.close_database()
 

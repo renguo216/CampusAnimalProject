@@ -15,7 +15,7 @@
           data-petid="{{item.pet_id}}">
 
       <image class="pet-avatar"
-             src="{{item.animal.photo_urls[0] || '/images/default-pet.png'}}"
+             src="{{item.animal.image}}"
              mode="aspectFill"></image>
 
       <view class="rescue-info">

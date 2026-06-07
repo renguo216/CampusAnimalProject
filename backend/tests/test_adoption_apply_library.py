@@ -1,350 +1,529 @@
+# backend/tests/test_adoption_apply_library.py
 """
-测试 AdoptionApplyLibrary 所有功能
-运行方式（在项目根目录执行）：
+AdoptionApplyLibrary 完整测试套件
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_adoption_apply_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_user、t_animal、t_adoptionapply 表已存在
 """
+
+import os
+import sys
+import unittest
+import uuid
+from datetime import datetime
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from backend.libs.adoption_apply_library import AdoptionApplyLibrary
 from backend.libs.user_library import UserLibrary
 from backend.libs.animal_library import AnimalLibrary
-import uuid
+from backend.utils.response import error_response
 
 
-def log_pass(original, current):
-    print(f"  [PASS]: 原始数据 = {original}, 当前数据 = {current}")
+
+# 期望的申请详情字段（详情和列表共用）
+EXPECTED_FIELDS = [
+    "apply_id", "pet_id", "user_id", "applicant_nickname",
+    "applicant_avatar", "pet_name", "pet_breed", "pet_photo_urls",
+    "pet_status", "status", "content", "review_comment", "created_at"
+]
 
 
-def log_fail(original, current):
-    print(f"  [FAIL]: 原始数据 = {original}, 当前数据 = {current}")
+class TestAdoptionApplyLibrary(unittest.TestCase):
+    """AdoptionApplyLibrary 完整功能测试"""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = AdoptionApplyLibrary()
+        cls.user_lib = UserLibrary()
+        cls.animal_lib = AnimalLibrary()
+        cls._cleanup_all()
 
-def main():
-    apply_lib = AdoptionApplyLibrary()
-    user_lib = UserLibrary()
-    animal_lib = AnimalLibrary()
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
-    # ======== 清理旧测试数据 ========
-    if apply_lib.db.open_database():
-        apply_lib.db.execute_raw_sql("DELETE FROM t_adoptionapply WHERE apply_id LIKE 'test_apply_%'")
-        apply_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE '测试动物_%'")
-        apply_lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_apply_user_%'")
-        apply_lib.db.close_database()
-        print("已清理旧测试数据")
-    # =================================
+    def setUp(self):
+        self.apply_ids = []
+        self.pet_ids = []
+        self.user_ids = []
+        self.pet_names = []
 
-    # ======== 准备测试数据 ========
-    test_user_id = f"test_apply_user_{uuid.uuid4().hex[:8]}"
-    test_user2_id = f"test_apply_user_{uuid.uuid4().hex[:8]}"
-    test_nickname = "测试申请人"
-    test_nickname2 = "测试申请人2"
-    test_avatar = "http://example.com/avatar.jpg"
+    def tearDown(self):
+        if not (self.apply_ids or self.pet_ids or self.user_ids):
+            return
+        if self.lib.db.open_database():
+            for aid in self.apply_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_adoptionapply WHERE apply_id=%s", (aid,))
+            for pid in self.pet_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_animal WHERE pet_id=%s", (pid,))
+            for name in self.pet_names:
+                self.lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name=%s", (name,))
+            for uid in self.user_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id=%s", (uid,))
+            self.lib.db.close_database()
 
-    # 注册两个测试用户
-    user_lib.register_user(test_user_id, test_nickname, test_avatar, role=1)
-    user_lib.register_user(test_user2_id, test_nickname2, test_avatar, role=1)
+    @classmethod
+    def _cleanup_all(cls):
+        if cls.lib.db.open_database():
+            cls.lib.db.execute_raw_sql("DELETE FROM t_adoptionapply WHERE apply_id LIKE %s", ("test_apply_%",))
+            cls.lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE %s", ("test_adopt_%",))
+            cls.lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE %s", ("test_adopt_user_%",))
+            cls.lib.db.close_database()
 
-    # 添加一个测试动物（可领养状态 status=0）
-    test_pet_id = animal_lib.add_animal(
-        name="测试动物_可领养",
-        breed="田园猫",
-        status=0,
-        color="橘色",
-        age=12,
-        gender=1,
-        description="一只温顺的橘猫"
-    )
+    # ---- 辅助方法 ----
 
-    # 添加一个已被领养的动物（status=1）
-    adopted_pet_id = animal_lib.add_animal(
-        name="测试动物_已领养",
-        breed="哈士奇",
-        status=1,
-        color="黑白",
-        age=24,
-        gender=2,
-        description="已被领养的狗"
-    )
-    print(f"测试数据准备完成：用户={test_user_id}, 用户2={test_user2_id}, 动物可领养={test_pet_id}, 动物已领养={adopted_pet_id}")
-    # ==============================
+    def _add_user(self, **kw) -> str:
+        uid = kw.pop("user_id", f"test_adopt_user_{uuid.uuid4().hex[:8]}")
+        kw.pop("avatarURL", None)
+        self.user_lib.register_user(uid, nickname=f"测试_{uuid.uuid4().hex[:6]}",
+                                    avatar_url="http://x.com/a.jpg", role=1)
+        self.user_ids.append(uid)
+        return uid
 
-    print("\n" + "=" * 50 + "\n  开始测试 AdoptionApplyLibrary\n" + "=" * 50)
+    def _add_animal(self, **kw) -> int:
+        kw.setdefault("name", f"test_adopt_{uuid.uuid4().hex[:8]}")
+        kw.setdefault("breed", "田园猫")
+        kw.setdefault("status", 0)
+        r = self.animal_lib.add_animal(**kw)
+        if not r.get("success"):
+            raise RuntimeError(f"添加动物失败: {r}")
+        pid = r["data"]["pet_id"]
+        self.pet_ids.append(pid)
+        self.pet_names.append(kw["name"])
+        return pid
 
-    # ========== 1. 测试检查重复申请（无重复） ==========
-    print("\n1. 测试检查重复申请（无重复）...")
-    result = apply_lib.check_duplicate_application(test_user_id, test_pet_id)
-    if not result:
-        log_pass(f"检查无重复，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}")
-    else:
-        log_fail(f"检查无重复，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}，预期 False")
+    def _submit(self, user_id, pet_id, content="") -> dict:
+        r = self.lib.submit_adoption_application(user_id, pet_id, content)
+        if r.get("success"):
+            self.apply_ids.append(r["data"]["apply_id"])
+        return r
 
-    # ========== 2. 测试检查重复申请（有重复） ==========
-    print("\n2. 测试检查重复申请（有重复）...")
-    apply_id = apply_lib.submit_adoption_application(test_user_id, test_pet_id, "想领养这只猫")
-    result = apply_lib.check_duplicate_application(test_user_id, test_pet_id)
-    if result:
-        log_pass(f"检查有重复，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}")
-    else:
-        log_fail(f"检查有重复，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}，预期 True")
+    def _make_pending(self, user_id=None, pet_id=None) -> tuple:
+        """创建一个待审核申请，返回 (apply_id, user_id, pet_id)"""
+        uid = user_id or self._add_user()
+        pid = pet_id or self._add_animal()
+        r = self._submit(uid, pid, "测试")
+        return r["data"]["apply_id"], uid, pid
 
-    # ========== 3. 测试提交申请 - 正常 ==========
-    print("\n3. 测试提交申请 - 正常...")
-    apply_id_2 = apply_lib.submit_adoption_application(test_user2_id, test_pet_id, "我也想要这只猫")
-    if apply_id_2:
-        log_pass(f"用户2提交申请，输入 user_id={test_user2_id}, pet_id={test_pet_id}", f"返回 apply_id={apply_id_2}")
-    else:
-        log_fail(f"用户2提交申请，输入 user_id={test_user2_id}, pet_id={test_pet_id}", f"返回 False，预期 apply_id")
+    def _set_status(self, apply_id, status, **kw):
+        """将申请设为指定状态：0=待审核, 1=通过, 2=驳回/取消"""
+        if status == 1:
+            return self.lib.approve_application(apply_id, self._add_user(), **kw)
+        if status == 2 and "review_comment" in kw:
+            return self.lib.reject_application(apply_id, **kw)
+        if status == 2:
+            # 取消需要 user_id
+            return self.lib.cancel_adoption_application(apply_id, kw.get("user_id", self._add_user()))
+        return {"success": True}
 
-    # ========== 4. 测试提交申请 - 用户不存在 ==========
-    print("\n4. 测试提交申请 - 用户不存在...")
-    result = apply_lib.submit_adoption_application("not_exist_user_xxx", test_pet_id, "测试")
-    if not result:
-        log_pass(f"用户不存在时提交申请，输入 user_id=not_exist_user_xxx", f"返回 {result}")
-    else:
-        log_fail(f"用户不存在时提交申请，输入 user_id=not_exist_user_xxx", f"返回 {result}，预期 False")
+    # ==================== submit_adoption_application ====================
 
-    # ========== 5. 测试提交申请 - 动物不存在 ==========
-    print("\n5. 测试提交申请 - 动物不存在...")
-    result = apply_lib.submit_adoption_application(test_user_id, 999999, "测试")
-    if not result:
-        log_pass(f"动物不存在时提交申请，输入 pet_id=999999", f"返回 {result}")
-    else:
-        log_fail(f"动物不存在时提交申请，输入 pet_id=999999", f"返回 {result}，预期 False")
+    def test_submit_success(self):
+        """正常提交（带/不带理由均成功）"""
+        uid, pid = self._add_user(), self._add_animal()
+        r = self._submit(uid, pid, "喜欢这只猫")
+        self.assertTrue(r["success"])
+        self.assertEqual(len(r["data"]["apply_id"]), 32)
 
-    # ========== 6. 测试提交申请 - 动物已领养 ==========
-    print("\n6. 测试提交申请 - 动物已领养...")
-    result = apply_lib.submit_adoption_application(test_user_id, adopted_pet_id, "测试")
-    if not result:
-        log_pass(f"动物已领养时提交申请，输入 pet_id={adopted_pet_id}", f"返回 {result}")
-    else:
-        log_fail(f"动物已领养时提交申请，输入 pet_id={adopted_pet_id}", f"返回 {result}，预期 False")
+        uid2 = self._add_user()
+        pid2 = self._add_animal()
+        r2 = self._submit(uid2, pid2, "")
+        self.assertTrue(r2["success"])
 
-    # ========== 7. 测试提交申请 - 重复提交 ==========
-    print("\n7. 测试提交申请 - 重复提交...")
-    result = apply_lib.submit_adoption_application(test_user_id, test_pet_id, "再次申请")
-    if not result:
-        log_pass(f"重复提交申请，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}")
-    else:
-        log_fail(f"重复提交申请，user_id={test_user_id}, pet_id={test_pet_id}", f"返回 {result}，预期 False")
+    def test_submit_user_not_exists(self):
+        pid = self._add_animal()
+        r = self.lib.submit_adoption_application("no_user_xxx", pid)
+        self.assertFalse(r["success"])
+        self.assertIn("用户不存在", r["message"])
 
-    # ========== 8. 测试提交申请 - 空 content ==========
-    print("\n8. 测试提交申请 - 空 content...")
-    temp_user3_id = f"test_apply_user_{uuid.uuid4().hex[:8]}"
-    user_lib.register_user(temp_user3_id, "临时用户3", test_avatar, role=1)
-    result = apply_lib.submit_adoption_application(temp_user3_id, test_pet_id, "")
-    if result:
-        log_pass(f"空 content 提交申请，输入 content=''", f"返回 apply_id={result}")
-    else:
-        log_fail(f"空 content 提交申请，输入 content=''", f"返回 False，预期 apply_id")
+    def test_submit_animal_not_exists(self):
+        uid = self._add_user()
+        r = self.lib.submit_adoption_application(uid, 999999)
+        self.assertFalse(r["success"])
+        self.assertIn("动物不存在", r["message"])
 
-    # ========== 9. 测试查看申请详情 - 正常 ==========
-    print("\n9. 测试查看申请详情 - 正常...")
-    detail = apply_lib.get_application_by_id(apply_id)
-    if detail and detail["apply_id"] == apply_id:
-        log_pass(f"查询申请详情，apply_id={apply_id}", f"返回数据包含 apply_id={detail['apply_id']}, 申请人={detail['applicant_nickname']}, 动物={detail['pet_name']}")
-    else:
-        log_fail(f"查询申请详情，apply_id={apply_id}", f"返回 {detail}，预期非空字典")
+    def test_submit_animal_adopted(self):
+        uid = self._add_user()
+        pid = self._add_animal(status=1)
+        r = self.lib.submit_adoption_application(uid, pid)
+        self.assertFalse(r["success"])
+        self.assertIn("已被领养", r["message"])
 
-    # ========== 10. 测试查看申请详情 - 不存在 ==========
-    print("\n10. 测试查看申请详情 - 不存在...")
-    none_detail = apply_lib.get_application_by_id("not_exist_apply_xxx")
-    if none_detail is None:
-        log_pass(f"查询不存在的申请详情，apply_id=not_exist_apply_xxx", f"返回 None")
-    else:
-        log_fail(f"查询不存在的申请详情，apply_id=not_exist_apply_xxx", f"返回 {none_detail}，预期 None")
+    def test_submit_duplicate(self):
+        uid, pid = self._add_user(), self._add_animal()
+        r1 = self._submit(uid, pid)
+        r2 = self.lib.submit_adoption_application(uid, pid, "重复")
+        self.assertFalse(r2["success"])
+        self.assertIn("重复提交", r2["message"])
+        self.assertEqual(r2["data"]["apply_id"], r1["data"]["apply_id"])
 
-    # ========== 11. 测试查看用户申请列表 - 有数据 ==========
-    print("\n11. 测试查看用户申请列表 - 有数据...")
-    user_apps = apply_lib.get_user_applications(test_user_id, page=1, page_size=20)
-    if user_apps and user_apps["total"] > 0:
-        log_pass(f"查询用户 {test_user_id} 的申请列表", f"返回 {user_apps['total']} 条记录")
-    else:
-        log_fail(f"查询用户 {test_user_id} 的申请列表", f"返回 {user_apps}，预期至少1条记录")
+    def test_submit_db_errors(self):
+        uid, pid = self._add_user(), self._add_animal()
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.submit_adoption_application(uid, pid)["success"])
+        with patch.object(self.lib.db, 'execute_raw_sql', return_value=None):
+            r = self.lib.submit_adoption_application(uid, pid)
+            self.assertFalse(r["success"])
+            self.assertIn("数据库插入失败", r["message"])
 
-    # ========== 12. 测试查看用户申请列表 - 无数据 ==========
-    print("\n12. 测试查看用户申请列表 - 无数据...")
-    empty_apps = apply_lib.get_user_applications("not_exist_user_no_apps", page=1, page_size=20)
-    if empty_apps and empty_apps["total"] == 0:
-        log_pass(f"查询无申请用户，user_id=not_exist_user_no_apps", f"返回 total={empty_apps['total']}")
-    else:
-        log_fail(f"查询无申请用户，user_id=not_exist_user_no_apps", f"返回 {empty_apps}，预期 total=0")
+    # ==================== _check_duplicate_application ====================
 
-    # ========== 13. 测试查看用户申请列表 - 分页 ==========
-    print("\n13. 测试查看用户申请列表 - 分页...")
-    page1 = apply_lib.get_user_applications(test_user_id, page=1, page_size=1)
-    page2 = apply_lib.get_user_applications(test_user_id, page=2, page_size=1)
-    if page1 and len(page1["applications"]) == 1 and page1["page"] == 1:
-        log_pass(f"分页查询第1页，page=1, page_size=1", f"返回 {len(page1['applications'])} 条，total={page1['total']}")
-    else:
-        log_fail(f"分页查询第1页，page=1, page_size=1", f"返回 {page1}，预期1条记录")
-    if page2 and len(page2["applications"]) == 0:
-        log_pass(f"分页查询第2页，page=2, page_size=1", f"返回 {len(page2['applications'])} 条（无数据）")
-    else:
-        log_fail(f"分页查询第2页，page=2, page_size=1", f"返回 {page2}，预期0条记录")
+    def test_check_duplicate(self):
+        uid, pid = self._add_user(), self._add_animal()
+        # 无重复
+        r = self.lib._check_duplicate_application(uid, pid)
+        self.assertTrue(r["success"])
+        self.assertFalse(r["data"]["is_duplicate"])
 
-    # ========== 14. 测试查看动物申请列表 - 有数据 ==========
-    print("\n14. 测试查看动物申请列表 - 有数据...")
-    animal_apps = apply_lib.get_animal_applications(test_pet_id, page=1, page_size=20)
-    if animal_apps and animal_apps["total"] >= 2:
-        log_pass(f"查询动物 {test_pet_id} 的申请列表", f"返回 {animal_apps['total']} 条记录")
-    else:
-        log_fail(f"查询动物 {test_pet_id} 的申请列表", f"返回 {animal_apps}，预期至少2条记录")
+        # 有重复
+        self._submit(uid, pid)
+        r2 = self.lib._check_duplicate_application(uid, pid)
+        self.assertTrue(r2["data"]["is_duplicate"])
 
-    # ========== 15. 测试查看动物申请列表 - 无数据 ==========
-    print("\n15. 测试查看动物申请列表 - 无数据...")
-    empty_animal_apps = apply_lib.get_animal_applications(999999, page=1, page_size=20)
-    if empty_animal_apps and empty_animal_apps["total"] == 0:
-        log_pass(f"查询不存在的动物的申请列表，pet_id=999999", f"返回 total={empty_animal_apps['total']}")
-    else:
-        log_fail(f"查询不存在的动物的申请列表，pet_id=999999", f"返回 {empty_animal_apps}，预期 total=0")
+    def test_check_duplicate_after_status_change(self):
+        """取消或驳回后不再视为重复"""
+        uid, pid = self._add_user(), self._add_animal()
+        aid = self._submit(uid, pid)["data"]["apply_id"]
+        self.lib.cancel_adoption_application(aid, uid)
+        self.assertFalse(self.lib._check_duplicate_application(uid, pid)["data"]["is_duplicate"])
 
-       # ========== 16. 测试取消申请 - 正常 ==========
-    print("\n16. 测试取消申请 - 正常...")
-    # 创建一个全新的动物用于取消测试，避免与其他测试冲突
-    cancel_pet_id = animal_lib.add_animal(
-        name="测试动物_用于取消",
-        breed="田园猫",
-        status=0
-    )
-    cancel_apply_id = apply_lib.submit_adoption_application(test_user_id, cancel_pet_id, "待取消的申请")
-    cancel_result = apply_lib.cancel_adoption_application(cancel_apply_id, test_user_id)
-    if cancel_result:
-        log_pass(f"取消申请，apply_id={cancel_apply_id}, user_id={test_user_id}", f"返回 {cancel_result}")
-    else:
-        log_fail(f"取消申请，apply_id={cancel_apply_id}, user_id={test_user_id}", f"返回 {cancel_result}，预期 True")
-   
-    # ========== 17. 测试取消申请 - 申请不存在 ==========
-    print("\n17. 测试取消申请 - 申请不存在...")
-    cancel_result = apply_lib.cancel_adoption_application("not_exist_apply_xxx", test_user_id)
-    if not cancel_result:
-        log_pass(f"取消不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {cancel_result}")
-    else:
-        log_fail(f"取消不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {cancel_result}，预期 False")
+        aid2 = self._submit(uid, pid)["data"]["apply_id"]
+        self.lib.reject_application(aid2, "驳回")
+        self.assertFalse(self.lib._check_duplicate_application(uid, pid)["data"]["is_duplicate"])
 
-    # ========== 18. 测试取消申请 - 非本人 ==========
-    print("\n18. 测试取消申请 - 非本人...")
-    # 1. 先创建一个全新的动物，确保状态干净
-    non_owner_pet_id = animal_lib.add_animal(
-        name="取消申请非本人测试动物",
-        breed="田园猫",
-        status=0
-    )
-    # 2. 让 test_user_id 提交一个申请
-    owner_apply_id = apply_lib.submit_adoption_application(test_user_id, non_owner_pet_id, "非本人取消测试")
-    if not owner_apply_id:
-        log_fail("创建测试申请失败，无法继续测试", "")
-        return
-    # 3. 让 test_user2_id 尝试取消这个申请（预期失败）
-    cancel_result = apply_lib.cancel_adoption_application(owner_apply_id, test_user2_id)
-    if not cancel_result:
-        log_pass(f"非本人取消申请，apply_id={owner_apply_id}, 操作人={test_user2_id}, 申请人={test_user_id}", f"返回 {cancel_result}")
-    else:
-        log_fail(f"非本人取消申请，apply_id={owner_apply_id}, 操作人={test_user2_id}, 申请人={test_user_id}", f"返回 {cancel_result}，预期 False")
-   
-    # ========== 19. 测试取消申请 - 已通过 ==========
-    print("\n19. 测试取消申请 - 已通过...")
-    temp_pet_id = animal_lib.add_animal(name="测试动物_临时", breed="临时品种", status=0)
-    temp_apply_id = apply_lib.submit_adoption_application(test_user_id, temp_pet_id, "审核通过后的取消测试")
-    apply_lib.approve_application(temp_apply_id, test_user2_id, "同意领养")
-    cancel_result = apply_lib.cancel_adoption_application(temp_apply_id, test_user_id)
-    if not cancel_result:
-        log_pass(f"已通过的申请取消失败", f"返回 {cancel_result}")
-    else:
-        log_fail(f"已通过的申请取消失败", f"返回 {cancel_result}，预期 False")
+    def test_check_duplicate_different_user(self):
+        uid1, uid2, pid = self._add_user(), self._add_user(), self._add_animal()
+        self._submit(uid1, pid)
+        self.assertFalse(self.lib._check_duplicate_application(uid2, pid)["data"]["is_duplicate"])
 
-    # ========== 20. 测试审核通过 - 正常 ==========
-    print("\n20. 测试审核通过 - 正常...")
-    approve_pet_id = animal_lib.add_animal(name="测试动物_审核通过", breed="猫", status=0)
-    approve_apply_id = apply_lib.submit_adoption_application(test_user2_id, approve_pet_id, "申请审核通过测试")
-    approve_result = apply_lib.approve_application(approve_apply_id, test_user_id, "同意领养，请好好照顾")
-    if approve_result:
-        log_pass(f"审核通过申请，apply_id={approve_apply_id}", f"返回 {approve_result}")
-    else:
-        log_fail(f"审核通过申请，apply_id={approve_apply_id}", f"返回 {approve_result}，预期 True")
+    # ==================== cancel_adoption_application ====================
 
-    # ========== 21. 测试审核通过 - 申请不存在 ==========
-    print("\n21. 测试审核通过 - 申请不存在...")
-    approve_result = apply_lib.approve_application("not_exist_apply_xxx", test_user_id, "测试")
-    if not approve_result:
-        log_pass(f"审核不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {approve_result}")
-    else:
-        log_fail(f"审核不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {approve_result}，预期 False")
+    def test_cancel_success(self):
+        aid, uid, _ = self._make_pending()
+        r = self.lib.cancel_adoption_application(aid, uid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 2)
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 2)
 
-        # ========== 22. 测试审核通过 - 非待审核状态... ==========
-    print("\n22. 测试审核通过 - 非待审核状态...")
-    # 1. 创建一个新动物和申请
-    reject_state_pet_id = animal_lib.add_animal(
-        name="审核通过非待审核测试动物",
-        breed="猫",
-        status=0
-    )
-    reject_state_apply_id = apply_lib.submit_adoption_application(test_user2_id, reject_state_pet_id, "非待审核状态测试")
-    if not reject_state_apply_id:
-        log_fail("创建测试申请失败，无法继续测试", "")
-        return
-    # 2. 先把这个申请驳回，使它的状态变为非待审核（status=2）
-    apply_lib.reject_application(reject_state_apply_id, "先驳回")
-    # 3. 尝试审核这个已驳回的申请（预期失败）
-    approve_result = apply_lib.approve_application(reject_state_apply_id, test_user_id, "试图通过已驳回的")
-    if not approve_result:
-        log_pass(f"审核已驳回的申请，apply_id={reject_state_apply_id}", f"返回 {approve_result}")
-    else:
-        log_fail(f"审核已驳回的申请，apply_id={reject_state_apply_id}", f"返回 {approve_result}，预期 False")
-    
-    # ========== 23. 测试审核拒绝 - 正常 ==========
-    print("\n23. 测试审核拒绝 - 正常...")
-    # 创建一个全新的动物用于驳回测试，避免与其他测试冲突
-    reject_pet_id = animal_lib.add_animal(
-        name="测试动物_用于驳回",
-        breed="猫",
-        status=0
-    )
-    reject_apply_id = apply_lib.submit_adoption_application(test_user2_id, reject_pet_id, "申请驳回测试")
-    reject_result = apply_lib.reject_application(reject_apply_id, "不符合领养条件")
-    if reject_result:
-        log_pass(f"驳回申请，apply_id={reject_apply_id}", f"返回 {reject_result}")
-    else:
-        log_fail(f"驳回申请，apply_id={reject_apply_id}", f"返回 {reject_result}，预期 True")
-    
-    # ========== 24. 测试审核拒绝 - 申请不存在 ==========
-    print("\n24. 测试审核拒绝 - 申请不存在...")
-    reject_result = apply_lib.reject_application("not_exist_apply_xxx", "测试")
-    if not reject_result:
-        log_pass(f"驳回不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {reject_result}")
-    else:
-        log_fail(f"驳回不存在的申请，apply_id=not_exist_apply_xxx", f"返回 {reject_result}，预期 False")
+    def test_cancel_fail_conditions(self):
+        """申请不存在 / 非本人 / 非待审核状态"""
+        uid, other = self._add_user(), self._add_user()
+        aid, _, _ = self._make_pending(uid)
 
-    # ========== 25. 测试审核拒绝 - 非待审核状态... ==========
-    print("\n25. 测试审核拒绝 - 非待审核状态...")
-    # 1. 创建一个新动物和申请
-    approve_state_pet_id = animal_lib.add_animal(
-        name="审核拒绝非待审核测试动物",
-        breed="猫",
-        status=0
-    )
-    approve_state_apply_id = apply_lib.submit_adoption_application(test_user2_id, approve_state_pet_id, "已通过测试")
-    if not approve_state_apply_id:
-        log_fail("创建测试申请失败，无法继续测试", "")
-        return
-    # 2. 先把这个申请通过，使它的状态变为非待审核（status=1）
-    apply_lib.approve_application(approve_state_apply_id, test_user_id, "先通过")
-    # 3. 尝试拒绝这个已通过的申请（预期失败）
-    reject_result = apply_lib.reject_application(approve_state_apply_id, "试图驳回已通过的")
-    if not reject_result:
-        log_pass(f"驳回已通过的申请，apply_id={approve_state_apply_id}", f"返回 {reject_result}")
-    else:
-        log_fail(f"驳回已通过的申请，apply_id={approve_state_apply_id}", f"返回 {reject_result}，预期 False")
-     
-     # ========== 26. 清理测试数据 ==========
-    print("\n26. 清理测试数据...")
-    if apply_lib.db.open_database():
-        # 在清理动物时，把新的测试动物也包含进去
-        apply_lib.db.execute_raw_sql("DELETE FROM t_adoptionapply WHERE apply_id LIKE 'test_apply_%'")
-        apply_lib.db.execute_raw_sql("DELETE FROM t_animal WHERE name LIKE '测试动物_%'")
-        apply_lib.db.execute_raw_sql("DELETE FROM t_user WHERE user_id LIKE 'test_apply_user_%'")
-        apply_lib.db.close_database()
-        print("已清理测试数据")
-    else:
-        print("清理测试数据失败：数据库连接失败，请手动删除")
+        # 不存在
+        self.assertFalse(self.lib.cancel_adoption_application("no_xxx", uid)["success"])
+
+        # 非本人
+        r = self.lib.cancel_adoption_application(aid, other)
+        self.assertFalse(r["success"])
+        self.assertIn("无权取消", r["message"])
+
+        # 已通过后取消
+        self._set_status(aid, 1)
+        r = self.lib.cancel_adoption_application(aid, uid)
+        self.assertFalse(r["success"])
+        self.assertIn("只能取消待审核", r["message"])
+
+    def test_cancel_after_reject_or_cancel(self):
+        """已驳回/已取消的不能再取消"""
+        for status_fn in [
+            lambda a, u: self.lib.reject_application(a, "驳回"),
+            lambda a, u: self.lib.cancel_adoption_application(a, u),
+        ]:
+            aid, uid, _ = self._make_pending()
+            status_fn(aid, uid)
+            r = self.lib.cancel_adoption_application(aid, uid)
+            self.assertFalse(r["success"])
+            self.assertIn("只能取消待审核", r["message"])
+
+    # ==================== get_application_by_id ====================
+
+    def test_get_by_id_success(self):
+        aid, uid, pid = self._make_pending()
+        r = self.lib.get_application_by_id(aid)
+        self.assertTrue(r["success"])
+        d = r["data"]
+        self.assertEqual(d["apply_id"], aid)
+        self.assertEqual(d["user_id"], uid)
+        self.assertEqual(d["pet_id"], pid)
+        self.assertEqual(d["status"], 0)
+        for f in EXPECTED_FIELDS:
+            self.assertIn(f, d)
+
+    def test_get_by_id_not_exists(self):
+        self.assertFalse(self.lib.get_application_by_id("no_xxx")["success"])
+
+    def test_get_by_id_all_statuses(self):
+        """各状态下的详情均可正常查询"""
+        reviewer = self._add_user()
+        for fn, expected_status in [
+            (lambda a: None, 0),  # 待审核
+            (lambda a: self.lib.approve_application(a, reviewer, "通过"), 1),
+            (lambda a: self.lib.reject_application(a, "驳回"), 2),
+        ]:
+            aid, uid, _ = self._make_pending()
+            if fn(aid):
+                pass  # 执行状态变更
+            d = self.lib.get_application_by_id(aid)["data"]
+            self.assertEqual(d["status"], expected_status)
+
+    def test_get_by_id_created_at_format(self):
+        aid, _, _ = self._make_pending()
+        t = self.lib.get_application_by_id(aid)["data"]["created_at"]
+        datetime.strptime(t, "%Y-%m-%d %H:%M:%S")  # 不抛异常即通过
+
+    # ==================== get_user_applications ====================
+
+    def test_get_user_apps_success(self):
+        uid = self._add_user()
+        for _ in range(3):
+            self._submit(uid, self._add_animal())
+        r = self.lib.get_user_applications(uid, page=1, page_size=20)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 3)
+        self.assertEqual(len(r["data"]["applications"]), 3)
+        for f in ["applications", "total", "page", "page_size"]:
+            self.assertIn(f, r["data"])
+
+    def test_get_user_apps_empty(self):
+        r = self.lib.get_user_applications("no_user_xxx")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 0)
+
+    def test_get_user_apps_pagination(self):
+        uid = self._add_user()
+        for _ in range(3):
+            self._submit(uid, self._add_animal())
+        p1 = self.lib.get_user_applications(uid, page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["applications"]), 2)
+        p2 = self.lib.get_user_applications(uid, page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["applications"]), 1)
+        p99 = self.lib.get_user_applications(uid, page=99, page_size=20)
+        self.assertEqual(len(p99["data"]["applications"]), 0)
+
+    def test_get_user_apps_order_desc(self):
+        uid = self._add_user()
+        self._submit(uid, self._add_animal())
+        self._submit(uid, self._add_animal())
+        apps = self.lib.get_user_applications(uid)["data"]["applications"]
+        t1 = datetime.strptime(apps[0]["created_at"], "%Y-%m-%d %H:%M:%S")
+        t2 = datetime.strptime(apps[1]["created_at"], "%Y-%m-%d %H:%M:%S")
+        self.assertGreaterEqual(t1, t2)
+
+    def test_get_user_apps_field_completeness(self):
+        uid = self._add_user()
+        self._submit(uid, self._add_animal())
+        app = self.lib.get_user_applications(uid)["data"]["applications"][0]
+        for f in EXPECTED_FIELDS:
+            self.assertIn(f, app)
+
+    def test_get_user_apps_multiple_statuses(self):
+        """列表中可同时包含不同状态的申请"""
+        uid, reviewer = self._add_user(), self._add_user()
+        self._submit(uid, self._add_animal())  # 待审核
+        r2 = self._submit(uid, self._add_animal())
+        self.lib.approve_application(r2["data"]["apply_id"], reviewer)  # 通过
+        r3 = self._submit(uid, self._add_animal())
+        self.lib.reject_application(r3["data"]["apply_id"], "驳回")  # 驳回
+        statuses = {a["status"] for a in self.lib.get_user_applications(uid)["data"]["applications"]}
+        self.assertEqual(statuses, {0, 1, 2})
+
+    # ==================== get_animal_applications ====================
+
+    def test_get_animal_apps_success(self):
+        pid = self._add_animal()
+        for _ in range(2):
+            self._submit(self._add_user(), pid)
+        r = self.lib.get_animal_applications(pid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["total"], 2)
+
+    def test_get_animal_apps_empty(self):
+        self.assertEqual(self.lib.get_animal_applications(999999)["data"]["total"], 0)
+
+    def test_get_animal_apps_pagination(self):
+        pid = self._add_animal()
+        for _ in range(3):
+            self._submit(self._add_user(), pid)
+        p1 = self.lib.get_animal_applications(pid, page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["applications"]), 2)
+        p2 = self.lib.get_animal_applications(pid, page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["applications"]), 1)
+
+    def test_get_animal_apps_field_and_order(self):
+        pid = self._add_animal()
+        self._submit(self._add_user(), pid)
+        self._submit(self._add_user(), pid)
+        apps = self.lib.get_animal_applications(pid)["data"]["applications"]
+        for f in EXPECTED_FIELDS:
+            self.assertIn(f, apps[0])
+        t1 = datetime.strptime(apps[0]["created_at"], "%Y-%m-%d %H:%M:%S")
+        t2 = datetime.strptime(apps[1]["created_at"], "%Y-%m-%d %H:%M:%S")
+        self.assertGreaterEqual(t1, t2)
+
+    # ==================== approve_application ====================
+
+    def test_approve_success(self):
+        aid, uid, pid = self._make_pending()
+        reviewer = self._add_user()
+        r = self.lib.approve_application(aid, reviewer, "同意领养")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 1)
+        # 验证申请和动物状态
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 1)
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["review_comment"], "同意领养")
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 1)
+
+    def test_approve_without_comment(self):
+        aid, _, _ = self._make_pending()
+        self.assertTrue(self.lib.approve_application(aid, self._add_user())["success"])
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["review_comment"], "")
+
+    def test_approve_fail_conditions(self):
+        """不存在 / 非待审核状态"""
+        reviewer = self._add_user()
+        self.assertFalse(self.lib.approve_application("no_xxx", reviewer)["success"])
+
+        for status_fn in [
+            lambda a, u: self.lib.approve_application(a, reviewer),
+            lambda a, u: self.lib.reject_application(a, "驳回"),
+            lambda a, u: self.lib.cancel_adoption_application(a, u),
+        ]:
+            aid, uid, _ = self._make_pending()
+            status_fn(aid, uid)
+            r = self.lib.approve_application(aid, reviewer, "再次操作")
+            self.assertFalse(r["success"])
+            self.assertIn("只能审核待审核", r["message"])
+
+    def test_approve_animal_update_fail_graceful(self):
+        """动物状态更新失败时申请仍成功"""
+        aid, _, _ = self._make_pending()
+        with patch.object(self.lib.animal_lib, 'update_animal_status',
+                          return_value=error_response("失败")):
+            r = self.lib.approve_application(aid, self._add_user(), "同意")
+        self.assertTrue(r["success"])
+
+    # ==================== reject_application ====================
+
+    def test_reject_success(self):
+        aid, _, pid = self._make_pending()
+        r = self.lib.reject_application(aid, "不符合条件")
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["status"], 2)
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["review_comment"], "不符合条件")
+        # 动物状态不变
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 0)
+
+    def test_reject_without_comment(self):
+        aid, _, _ = self._make_pending()
+        self.assertTrue(self.lib.reject_application(aid)["success"])
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["review_comment"], "")
+
+    def test_reject_fail_conditions(self):
+        """不存在 / 非待审核状态"""
+        self.assertFalse(self.lib.reject_application("no_xxx")["success"])
+
+        reviewer = self._add_user()
+        for status_fn in [
+            lambda a, u: self.lib.approve_application(a, reviewer),
+            lambda a, u: self.lib.reject_application(a, "驳回"),
+            lambda a, u: self.lib.cancel_adoption_application(a, u),
+        ]:
+            aid, uid, _ = self._make_pending()
+            status_fn(aid, uid)
+            r = self.lib.reject_application(aid, "再次操作")
+            self.assertFalse(r["success"])
+            self.assertIn("只能驳回待审核", r["message"])
+
+    # ==================== DB 连接失败（批量覆盖） ====================
+
+    def test_db_connection_fail(self):
+        """所有需要数据库的方法在连接失败时均返回错误"""
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.get_application_by_id("x")["success"])
+            self.assertFalse(self.lib.get_user_applications("x")["success"])
+            self.assertFalse(self.lib.get_animal_applications(1)["success"])
+            self.assertFalse(self.lib.cancel_adoption_application("x", "u")["success"])
+            self.assertFalse(self.lib.approve_application("x", "r")["success"])
+            self.assertFalse(self.lib.reject_application("x")["success"])
+            self.assertFalse(self.lib._check_duplicate_application("u", 1)["success"])
+
+    # ==================== 综合业务场景 ====================
+
+    def test_full_lifecycle_approved(self):
+        """提交 -> 待审核 -> 通过 -> 动物变为已领养"""
+        aid, uid, pid = self._make_pending()
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 0)
+        self.lib.approve_application(aid, self._add_user(), "通过")
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 1)
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 1)
+
+    def test_full_lifecycle_rejected(self):
+        """提交 -> 驳回 -> 动物状态不变"""
+        aid, _, pid = self._make_pending()
+        self.lib.reject_application(aid, "驳回")
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 2)
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 0)
+
+    def test_full_lifecycle_cancelled(self):
+        """提交 -> 取消 -> 动物状态不变"""
+        aid, uid, pid = self._make_pending()
+        self.lib.cancel_adoption_application(aid, uid)
+        self.assertEqual(self.lib.get_application_by_id(aid)["data"]["status"], 2)
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 0)
+
+    def test_cancel_or_reject_then_reapply(self):
+        """取消/驳回后可重新申请同一动物"""
+        for fn in [
+            lambda a, u: self.lib.cancel_adoption_application(a, u),
+            lambda a, u: self.lib.reject_application(a, "驳回"),
+        ]:
+            uid, pid = self._add_user(), self._add_animal()
+            old_aid = self._submit(uid, pid)["data"]["apply_id"]
+            fn(old_aid, uid)
+            new_aid = self._submit(uid, pid)["data"]["apply_id"]
+            self.assertNotEqual(old_aid, new_aid)
+
+    def test_approved_animal_blocks_new_application(self):
+        """动物被领养后新用户无法申请"""
+        uid1, uid2 = self._add_user(), self._add_user()
+        pid = self._add_animal()
+        aid = self._submit(uid1, pid)["data"]["apply_id"]
+        self.lib.approve_application(aid, self._add_user(), "同意")
+        r = self.lib.submit_adoption_application(uid2, pid)
+        self.assertFalse(r["success"])
+        self.assertIn("已被领养", r["message"])
+
+    def test_approve_one_does_not_affect_other_pending(self):
+        """通过一个申请不影响同一动物的其他待审核申请"""
+        pid = self._add_animal()
+        aid1 = self._submit(self._add_user(), pid)["data"]["apply_id"]
+        aid2 = self._submit(self._add_user(), pid)["data"]["apply_id"]
+        self.lib.approve_application(aid1, self._add_user(), "同意")
+        self.assertEqual(self.lib.get_application_by_id(aid1)["data"]["status"], 1)
+        self.assertEqual(self.lib.get_application_by_id(aid2)["data"]["status"], 0)
+        self.assertEqual(self.animal_lib.get_animal_by_id(pid)["data"]["status"], 1)
+
+    def test_multiple_users_same_animal_and_vice_versa(self):
+        """多用户申请同一动物 / 同一用户申请多只动物"""
+        # 多用户 -> 同一动物
+        pid = self._add_animal()
+        for _ in range(3):
+            self._submit(self._add_user(), pid)
+        self.assertEqual(self.lib.get_animal_applications(pid)["data"]["total"], 3)
+
+        # 同一用户 -> 多只动物
+        uid = self._add_user()
+        for _ in range(3):
+            self._submit(uid, self._add_animal())
+        self.assertGreaterEqual(self.lib.get_user_applications(uid)["data"]["total"], 3)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

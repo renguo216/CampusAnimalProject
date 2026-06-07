@@ -1,0 +1,21 @@
+<view class="container">
+  <view class="header">
+    <text class="title">平台规则</text>
+  </view>
+
+  <view class="rules-list">
+    <view class="rule-item"
+          wx:for="{{rules}}"
+          wx:key="id"
+          bindtap="expandRule"
+          data-index="{{index}}">
+      <view class="rule-title">
+        <text>{{item.title}}</text>
+        <text class="arrow {{item.expanded ? 'expanded' : ''}}">›</text>
+      </view>
+      <view class="rule-content" wx:if="{{item.expanded}}">
+        <text>{{item.content}}</text>
+      </view>
+    </view>
+  </view>
+</view>

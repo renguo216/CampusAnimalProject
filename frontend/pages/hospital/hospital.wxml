@@ -3,16 +3,28 @@
     <text class="header-title">附近医院</text>
   </view>
 
-  <view class="map-area">
-    <view class="map-placeholder">
-      <text class="map-icon">🗺️</text>
-      <text class="map-text">地图加载中...</text>
+  <view class="filter-area">
+    <view class="filter-tabs">
+      <view class="filter-tab {{selectedDistance === 'all' ? 'active' : ''}}" bindtap="selectDistance" data-distance="all">
+        <text>全部</text>
+      </view>
+      <view class="filter-tab {{selectedDistance === 500 ? 'active' : ''}}" bindtap="selectDistance" data-distance="500">
+        <text>500m内</text>
+      </view>
+      <view class="filter-tab {{selectedDistance === 1000 ? 'active' : ''}}" bindtap="selectDistance" data-distance="1000">
+        <text>1km内</text>
+      </view>
+      <view class="filter-tab {{selectedDistance === 2000 ? 'active' : ''}}" bindtap="selectDistance" data-distance="2000">
+        <text>2km内</text>
+      </view>
     </view>
-    <view class="location-badge">📍 西科大附近</view>
+    <view class="filter-result">
+      <text class="result-text">共找到 {{filteredHospitals.length}} 家医院</text>
+    </view>
   </view>
 
-  <view class="hospital-list">
-    <view class="hospital-card" wx:for="{{hospitals}}" wx:key="id" bindtap="viewHospital" data-id="{{item.id}}">
+  <scroll-view class="hospital-list" scroll-y>
+    <view class="hospital-card" wx:for="{{filteredHospitals}}" wx:key="id" bindtap="viewHospital" data-id="{{item.id}}">
       <view class="hospital-info">
         <text class="hospital-name">{{item.name}}</text>
         <text class="hospital-address">{{item.address}}</text>
@@ -20,12 +32,15 @@
           <text class="tag" wx:for="{{item.tags}}" wx:key="index">{{item}}</text>
         </view>
         <view class="hospital-footer">
-          <text class="distance">{{item.distance}}</text>
+          <text class="distance">{{item.distance}}km</text>
           <text class="phone" bindtap="callHospital" data-phone="{{item.phone}}">📞 联系</text>
         </view>
       </view>
     </view>
-  </view>
+    <view class="empty-tip" wx:if="{{filteredHospitals.length === 0}}">
+      <text>暂无符合条件的医院</text>
+    </view>
+  </scroll-view>
 
   <view class="tab-bar">
     <view class="tab-bar-item" bindtap="goHome">

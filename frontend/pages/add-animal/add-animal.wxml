@@ -1,0 +1,99 @@
+<view class="page">
+  <view class="hero">
+    <text class="hero-title">➕ 添加动物</text>
+    <text class="hero-sub">为校园小动物建立专属档案</text>
+  </view>
+
+  <view class="form-card">
+    <view class="form-item">
+      <text class="form-label">动物名 *</text>
+      <input class="form-input" placeholder="请输入动物名字" maxlength="20" bindinput="onInput" data-field="name" value="{{form.name}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">年龄（月）</text>
+      <input class="form-input" type="number" placeholder="单位：月" bindinput="onInput" data-field="age" value="{{form.age}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">性别</text>
+      <view class="radio-group">
+        <view class="radio-item {{form.gender === 1 ? 'active' : ''}}" bindtap="selectOption" data-field="gender" data-value="1">
+          <text>弟弟</text>
+        </view>
+        <view class="radio-item {{form.gender === 2 ? 'active' : ''}}" bindtap="selectOption" data-field="gender" data-value="2">
+          <text>妹妹</text>
+        </view>
+        <view class="radio-item {{form.gender === 0 ? 'active' : ''}}" bindtap="selectOption" data-field="gender" data-value="0">
+          <text>未知</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">是否绝育</text>
+      <view class="radio-group">
+        <view class="radio-item {{form.isNeutered === 1 ? 'active' : ''}}" bindtap="selectOption" data-field="isNeutered" data-value="1">
+          <text>已绝育</text>
+        </view>
+        <view class="radio-item {{form.isNeutered === 2 ? 'active' : ''}}" bindtap="selectOption" data-field="isNeutered" data-value="2">
+          <text>未绝育</text>
+        </view>
+        <view class="radio-item {{form.isNeutered === 0 ? 'active' : ''}}" bindtap="selectOption" data-field="isNeutered" data-value="0">
+          <text>未知</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">是否疫苗</text>
+      <view class="radio-group">
+        <view class="radio-item {{form.isVaccinated === 1 ? 'active' : ''}}" bindtap="selectOption" data-field="isVaccinated" data-value="1">
+          <text>已疫苗</text>
+        </view>
+        <view class="radio-item {{form.isVaccinated === 2 ? 'active' : ''}}" bindtap="selectOption" data-field="isVaccinated" data-value="2">
+          <text>未疫苗</text>
+        </view>
+        <view class="radio-item {{form.isVaccinated === 0 ? 'active' : ''}}" bindtap="selectOption" data-field="isVaccinated" data-value="0">
+          <text>未知</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">品种 / 毛色</text>
+      <view class="form-row">
+        <input class="form-input small" placeholder="品种（选填）" bindinput="onInput" data-field="breed" value="{{form.breed}}" />
+        <input class="form-input small" placeholder="毛色（选填）" bindinput="onInput" data-field="color" value="{{form.color}}" />
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">发现地点</text>
+      <input class="form-input" placeholder="校园内具体地点（选填）" bindinput="onInput" data-field="foundLocation" value="{{form.foundLocation}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">性格描述</text>
+      <textarea class="form-textarea" placeholder="简单描述一下小可爱的性格、习惯..." maxlength="200" bindinput="onInput" data-field="personality" value="{{form.personality}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">添加照片</text>
+      <view class="photo-grid">
+        <view class="photo-item photo-add" bindtap="choosePhoto">
+          <text class="photo-add-icon">+</text>
+          <text class="photo-add-text">添加照片</text>
+        </view>
+        <block wx:for="{{form.images}}" wx:key="*this">
+          <view class="photo-item">
+            <image class="photo-image" src="{{item}}" mode="aspectFill" />
+            <view class="photo-delete" catchtap="deletePhoto" data-index="{{index}}">×</view>
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <button class="submit-btn" bindtap="submit" loading="{{submitting}}">保存档案</button>
+  </view>
+</view>

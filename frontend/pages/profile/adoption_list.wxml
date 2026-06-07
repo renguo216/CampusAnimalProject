@@ -1,0 +1,42 @@
+<view class="container">
+  <view class="header">
+    <text class="title">我领养的动物</text>
+  </view>
+
+  <view wx:if="{{!isLoading && adoptionList.length === 0}}" class="empty-tip">
+    <text>您还没有领养过动物哦~</text>
+  </view>
+
+  <view class="adoption-list" wx:else>
+    <view class="adoption-card"
+          wx:for="{{adoptionList}}"
+          wx:key="apply_id"
+          bindtap="goToDetail"
+          data-petid="{{item.pet_id}}">
+
+      <image class="pet-avatar"
+             src="{{item.photoUrl || '/images/default-pet.png'}}"
+             mode="aspectFill"></image>
+
+      <view class="adoption-info">
+        <view class="pet-name">
+          {{item.petName || '未知小可爱'}}
+          <text class="gender">{{item.gender === 1 ? '♂' : (item.gender === 2 ? '♀' : '')}}</text>
+        </view>
+
+        <view class="pet-breed" wx:if="{{item.breed}}">
+          品种：{{item.breed}}
+        </view>
+
+        <view class="adoption-time">
+          领养时间：{{item.applyTime || '未知'}}
+        </view>
+
+        <view class="status-badge status-{{item.status}}">
+          {{item.statusText || '审核中'}}
+        </view>
+      </view>
+
+    </view>
+  </view>
+</view>

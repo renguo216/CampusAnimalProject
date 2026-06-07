@@ -1,0 +1,173 @@
+.page {
+  min-height: 100vh;
+  background: #f5f6fa;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroll {
+  flex: 1;
+  height: 0;
+}
+
+.banner {
+  width: 100%;
+  height: 480rpx;
+  background: #eee;
+}
+
+.banner-image {
+  width: 100%;
+  height: 100%;
+}
+
+.card {
+  background: #fff;
+  margin: 20rpx 24rpx;
+  border-radius: 20rpx;
+  padding: 28rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.04);
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #333;
+}
+
+.status-pill {
+  font-size: 24rpx;
+  padding: 6rpx 18rpx;
+  border-radius: 100rpx;
+  font-weight: 600;
+}
+
+.status-pill.available {
+  background: #e7faf1;
+  color: #2bb673;
+}
+
+.status-pill.adopted {
+  background: #f0f0f0;
+  color: #888;
+}
+
+.status-pill.medical {
+  background: #fff4e5;
+  color: #ff8a00;
+}
+
+.meta-row {
+  display: flex;
+  margin-top: 24rpx;
+  background: #f7f8fb;
+  border-radius: 16rpx;
+  padding: 20rpx 0;
+}
+
+.meta-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.meta-label {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.meta-value {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 600;
+}
+
+.card-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+
+.card-content {
+  display: block;
+  font-size: 28rpx;
+  color: #555;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.info-row {
+  display: flex;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  width: 180rpx;
+  font-size: 26rpx;
+  color: #999;
+}
+
+.info-value {
+  flex: 1;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.bottom-spacer {
+  height: 160rpx;
+}
+
+.footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.adopt-btn {
+  background: linear-gradient(135deg, #ff9f00 0%, #ffb800 100%);
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 600;
+  border-radius: 50rpx;
+  width: 100%;
+}
+
+.adopted-footer {
+  background: #f7f8fb;
+}
+
+.adopted-text {
+  font-size: 28rpx;
+  color: #999;
+  text-align: center;
+  padding: 20rpx 0;
+}
+
+.loading {
+  text-align: center;
+  color: #999;
+  font-size: 28rpx;
+  padding: 200rpx 0;
+}

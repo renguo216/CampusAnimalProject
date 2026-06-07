@@ -1,5 +1,5 @@
 page {
-  background-color: #fdf8f3;
+  background-color: #FFF8E7;
   min-height: 100vh;
 }
 
@@ -52,11 +52,6 @@ page {
 
 .badge.volunteer {
   background-color: #ff9f00;
-  color: #ffffff;
-}
-
-.badge.member {
-  background-color: #52c41a;
   color: #ffffff;
 }
 
@@ -123,12 +118,12 @@ page {
   font-size: 40rpx;
 }
 
-.action-icon.bg-orange {
-  background-color: #fff3e6;
+.action-icon.bg-green {
+  background-color: #e8f5e9;
 }
 
-.action-icon.bg-blue {
-  background-color: #e6f7ff;
+.action-icon.bg-orange {
+  background-color: #fff3e6;
 }
 
 .action-icon.bg-pink {

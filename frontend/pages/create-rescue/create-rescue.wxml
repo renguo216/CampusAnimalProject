@@ -1,0 +1,104 @@
+<view class="container">
+  <view class="header">
+    <view class="header-content">
+      <view class="back-btn" bindtap="goBack">
+      </view>
+      <text class="header-title">创建救助申请</text>
+    </view>
+  </view>
+
+  <scroll-view class="scroll-content" scroll-y="true">
+    <view class="section">
+      <view class="section-title">基本信息</view>
+      
+      <view class="form-item">
+        <text class="form-label">物种类型</text>
+        <view class="picker-wrapper" bindtap="showSpeciesPicker">
+          <text class="picker-text {{speciesType ? '' : 'placeholder'}}">{{speciesType || '请选择物种类型'}}</text>
+          <text class="picker-arrow">›</text>
+        </view>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">物种名称</text>
+        <input class="form-input" placeholder="如：中华田园猫（橘猫）" bindinput="onSpeciesNameInput" value="{{speciesName}}" />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">受伤/需求描述</text>
+        <textarea class="form-textarea" placeholder="请详细描述受伤情况或需求..." bindinput="onDescriptionInput" value="{{description}}" />
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">发现时间</text>
+        <picker mode="date" value="{{discoveryDate}}" bindchange="onDateChange">
+          <view class="picker-wrapper">
+            <text class="picker-text {{discoveryDate ? '' : 'placeholder'}}">{{discoveryDate || '请选择发现时间'}}</text>
+            <text class="picker-arrow">›</text>
+          </view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">位置信息</view>
+      
+      <view class="form-item">
+        <text class="form-label">发现地点</text>
+        <picker mode="selector" range="{{locationArray}}" value="{{locationIndex}}" bindchange="onLocationChange">
+          <view class="picker-wrapper">
+            <text class="picker-text {{locationText ? '' : 'placeholder'}}">{{locationText || '请选择发现地点'}}</text>
+            <text class="picker-arrow">›</text>
+          </view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">详细位置描述</text>
+        <input class="form-input" placeholder="如：西科大西门附近草丛" bindinput="onLocationDetailInput" value="{{locationDetail}}" />
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">救助需求类型</view>
+      <view class="tag-group">
+        <view class="tag-item {{needTypes === 'medical' ? 'active' : ''}}" bindtap="toggleNeedType" data-type="medical">
+          🏥 疾病治疗
+        </view>
+        <view class="tag-item {{needTypes === 'food' ? 'active' : ''}}" bindtap="toggleNeedType" data-type="food">
+          🍖 食物救助
+        </view>
+        <view class="tag-item {{needTypes === 'sterilization' ? 'active' : ''}}" bindtap="toggleNeedType" data-type="sterilization">
+          ✂️ 绝育手术
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">图片/视频上传</view>
+      <view class="upload-section">
+        <view class="upload-grid">
+          <block wx:for="{{images}}" wx:key="index">
+            <view class="image-item">
+              <image class="image-preview" src="{{item}}" mode="aspectFill" />
+              <view class="delete-btn" bindtap="deleteImage" data-index="{{index}}">×</view>
+            </view>
+          </block>
+          <view class="upload-btn" wx:if="{{images.length < 9}}" bindtap="chooseImage">
+            <text class="upload-icon">+</text>
+            <text class="upload-text">添加照片</text>
+          </view>
+        </view>
+        <view class="upload-tip">最多上传9张照片，支持拍照或从相册选择</view>
+      </view>
+    </view>
+
+    <view class="spacer"></view>
+  </scroll-view>
+
+  <view class="bottom-buttons">
+    <button class="btn btn-cancel" bindtap="handleCancel">取消</button>
+    <button class="btn btn-draft" bindtap="handleSaveDraft">保存草稿</button>
+    <button class="btn btn-submit" bindtap="handleSubmit">发布救助</button>
+  </view>
+</view>

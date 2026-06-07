@@ -1,0 +1,168 @@
+.page {
+  min-height: 100vh;
+  background: #f5f6fa;
+  padding-bottom: 60rpx;
+}
+
+.hero {
+  background: linear-gradient(135deg, #ff9f00 0%, #ffb800 100%);
+  padding: 70rpx 32rpx 60rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.hero-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #fff;
+}
+
+.hero-sub {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.form-card {
+  background: #fff;
+  margin: -40rpx 24rpx 0;
+  border-radius: 24rpx;
+  padding: 32rpx 28rpx;
+  box-shadow: 0 6rpx 24rpx rgba(0, 0, 0, 0.06);
+}
+
+.form-item {
+  margin-bottom: 30rpx;
+}
+
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 600;
+  margin-bottom: 14rpx;
+}
+
+.form-input {
+  background: #f7f8fb;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  color: #333;
+  border: 2rpx solid transparent;
+  transition: border-color 0.2s;
+}
+
+.form-input.small {
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+}
+
+.form-input.small:last-child {
+  margin-right: 0;
+}
+
+.form-textarea {
+  width: 100%;
+  background: #f7f8fb;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  font-size: 28rpx;
+  color: #333;
+  min-height: 160rpx;
+  box-sizing: border-box;
+}
+
+.radio-group {
+  display: flex;
+  gap: 16rpx;
+  flex-wrap: wrap;
+}
+
+.radio-item {
+  flex: 1;
+  min-width: 30%;
+  text-align: center;
+  background: #f7f8fb;
+  border-radius: 12rpx;
+  padding: 18rpx 0;
+  font-size: 26rpx;
+  color: #666;
+  border: 2rpx solid transparent;
+  transition: all 0.2s;
+}
+
+.radio-item.active {
+  background: #fff5e1;
+  color: #ff9f00;
+  border-color: #ff9f00;
+  font-weight: 600;
+}
+
+.photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.photo-item {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 16rpx;
+  position: relative;
+  overflow: hidden;
+  background: #f7f8fb;
+}
+
+.photo-add {
+  border: 2rpx dashed #ddd;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-add-icon {
+  font-size: 60rpx;
+  color: #bbb;
+  line-height: 1;
+}
+
+.photo-add-text {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+.photo-image {
+  width: 100%;
+  height: 100%;
+}
+
+.photo-delete {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 36rpx;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 28rpx;
+}
+
+.submit-btn {
+  background: linear-gradient(135deg, #ff9f00 0%, #ffb800 100%);
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+  border-radius: 50rpx;
+  margin-top: 20rpx;
+}

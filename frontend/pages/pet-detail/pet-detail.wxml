@@ -1,0 +1,84 @@
+<view class="page" wx:if="{{pet}}">
+  <scroll-view class="scroll" scroll-y>
+    <swiper class="banner" indicator-dots="{{pet.images && pet.images.length > 1}}" autoplay circular interval="3000">
+      <swiper-item wx:for="{{pet.images}}" wx:key="*this">
+        <image class="banner-image" src="{{item}}" mode="aspectFill" />
+      </swiper-item>
+      <swiper-item wx:if="{{!pet.images || pet.images.length === 0}}">
+        <image class="banner-image" src="{{defaultImage}}" mode="aspectFill" />
+      </swiper-item>
+    </swiper>
+
+    <view class="card">
+      <view class="title-row">
+        <text class="title">{{pet.name}}</text>
+        <view class="status-pill {{pet.statusClass}}">{{pet.statusText}}</view>
+      </view>
+      <view class="meta-row">
+        <view class="meta-block">
+          <text class="meta-label">年龄</text>
+          <text class="meta-value">{{pet.ageText}}</text>
+        </view>
+        <view class="meta-block">
+          <text class="meta-label">性别</text>
+          <text class="meta-value">{{pet.genderText}}</text>
+        </view>
+        <view class="meta-block">
+          <text class="meta-label">绝育</text>
+          <text class="meta-value">{{pet.neuteredText}}</text>
+        </view>
+        <view class="meta-block">
+          <text class="meta-label">疫苗</text>
+          <text class="meta-value">{{pet.vaccinatedText}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <text class="card-title">🐾 性格描述</text>
+      <text class="card-content">{{pet.personality || pet.description || '这只小可爱还在等待被大家认识～'}}</text>
+    </view>
+
+    <view class="card">
+      <text class="card-title">📋 详细信息</text>
+      <view class="info-row">
+        <text class="info-label">品种</text>
+        <text class="info-value">{{pet.breed || '未知'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">毛色</text>
+        <text class="info-value">{{pet.color || '未知'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">发现地点</text>
+        <text class="info-value">{{pet.foundLocation || '校园'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">档案编号</text>
+        <text class="info-value">#{{pet.id}}</text>
+      </view>
+      <view class="info-row" wx:if="{{pet.createTime}}">
+        <text class="info-label">建档时间</text>
+        <text class="info-value">{{pet.createTimeText}}</text>
+      </view>
+    </view>
+
+    <view class="card" wx:if="{{pet.description && pet.description !== pet.personality}}">
+      <text class="card-title">📖 详细故事</text>
+      <text class="card-content">{{pet.description}}</text>
+    </view>
+
+    <view class="bottom-spacer"></view>
+  </scroll-view>
+
+  <view class="footer" wx:if="{{canAdopt}}">
+    <button class="adopt-btn" bindtap="goToAdoptApply">🐾 申请领养</button>
+  </view>
+  <view class="footer adopted-footer" wx:else>
+    <text class="adopted-text">这只小可爱已经被领养啦~</text>
+  </view>
+</view>
+
+<view class="loading" wx:else>
+  <text>{{loading ? '加载中…' : '未找到动物信息'}}</text>
+</view>

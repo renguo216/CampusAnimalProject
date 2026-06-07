@@ -12,15 +12,6 @@
     </view>
   </view>
 
-  <view class="tabs">
-    <view class="tab-item {{currentTab === 'follow' ? 'active' : ''}}" bindtap="switchTab" data-tab="follow">
-      <text>关注</text>
-    </view>
-    <view class="tab-item {{currentTab === 'recommend' ? 'active' : ''}}" bindtap="switchTab" data-tab="recommend">
-      <text>推荐</text>
-    </view>
-  </view>
-
   <scroll-view class="post-list" scroll-y bindscrolltolower="loadMore">
     <view class="post-card" wx:for="{{posts}}" wx:key="id" bindtap="viewPostDetail" data-id="{{item.id}}">
       <view class="post-header">
@@ -29,7 +20,7 @@
           <text class="author-name">{{item.author}}</text>
           <text class="author-time">{{item.createTime}}</text>
         </view>
-        <view class="post-more" bindtap="showPostMenu" data-id="{{item.id}}">
+        <view class="post-more" bindtap="showPostMenu" data-id="{{item.id}}" data-author="{{item.author}}">
           <text>⋯</text>
         </view>
       </view>
@@ -48,10 +39,6 @@
         <view class="stat-item" bindtap="commentPost" data-id="{{item.id}}" catchtap="true">
           <text class="stat-icon">💬</text>
           <text class="stat-value">{{item.comments}}</text>
-        </view>
-        <view class="stat-item" bindtap="sharePost" data-id="{{item.id}}" catchtap="true">
-          <text class="stat-icon">🔄</text>
-          <text class="stat-value">转发</text>
         </view>
       </view>
     </view>
@@ -92,16 +79,16 @@
         <view class="post-tags">
           <text class="tags-label">选择话题</text>
           <view class="tags-list">
-            <view class="tag-item {{selectedTags.includes('rescue') ? 'active' : ''}}" bindtap="toggleTag" data-tag="rescue">
+            <view class="tag-item {{selectedTag === 'rescue' ? 'active' : ''}}" bindtap="selectTag" data-tag="rescue">
               <text>🐾 救助故事</text>
             </view>
-            <view class="tag-item {{selectedTags.includes('find') ? 'active' : ''}}" bindtap="toggleTag" data-tag="find">
+            <view class="tag-item {{selectedTag === 'find' ? 'active' : ''}}" bindtap="selectTag" data-tag="find">
               <text>🔍 寻宠/寻主</text>
             </view>
-            <view class="tag-item {{selectedTags.includes('adoption') ? 'active' : ''}}" bindtap="toggleTag" data-tag="adoption">
+            <view class="tag-item {{selectedTag === 'adoption' ? 'active' : ''}}" bindtap="selectTag" data-tag="adoption">
               <text>🏠 领养信息</text>
             </view>
-            <view class="tag-item {{selectedTags.includes('experience') ? 'active' : ''}}" bindtap="toggleTag" data-tag="experience">
+            <view class="tag-item {{selectedTag === 'experience' ? 'active' : ''}}" bindtap="selectTag" data-tag="experience">
               <text>💡 经验分享</text>
             </view>
           </view>

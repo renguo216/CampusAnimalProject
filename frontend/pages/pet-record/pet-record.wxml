@@ -1,0 +1,57 @@
+<view class="page">
+  <view class="hero">
+    <text class="hero-title">📋 动物档案</text>
+    <text class="hero-sub">查看校园所有动物信息（共 {{stats.total}} 只）</text>
+  </view>
+
+  <view class="summary">
+    <view class="summary-item">
+      <text class="summary-num">{{stats.total}}</text>
+      <text class="summary-label">总数</text>
+    </view>
+    <view class="summary-item">
+      <text class="summary-num available">{{stats.available}}</text>
+      <text class="summary-label">待领养</text>
+    </view>
+    <view class="summary-item">
+      <text class="summary-num adopted">{{stats.adopted}}</text>
+      <text class="summary-label">已领养</text>
+    </view>
+  </view>
+
+  <scroll-view class="pet-list" scroll-y enable-back-to-top refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
+    <view wx:if="{{loading && petList.length === 0}}" class="list-loading">
+      <text>加载中…</text>
+    </view>
+    <view wx:elif="{{petList.length === 0}}" class="list-empty">
+      <text class="empty-icon">🐾</text>
+      <text class="empty-text">还没有任何动物档案</text>
+      <text class="empty-hint">点击“添加动物”创建第一份档案</text>
+    </view>
+    <view wx:else>
+      <view class="pet-card {{item.adopted ? 'adopted' : ''}}" wx:for="{{petList}}" wx:key="id">
+        <image class="pet-image" src="{{item.image || defaultImage}}" mode="aspectFill" />
+        <view class="pet-info">
+          <view class="pet-header">
+            <text class="pet-name">{{item.name}}</text>
+            <view class="status-pill {{item.statusClass}}">{{item.statusText}}</view>
+          </view>
+          <view class="pet-meta">
+            <text class="meta-item">{{item.ageText}}</text>
+            <text class="meta-item">{{item.genderText}}</text>
+            <text class="meta-item">{{item.neuteredText}}</text>
+            <text class="meta-item">{{item.vaccinatedText}}</text>
+          </view>
+          <text class="pet-desc">{{item.personality || item.description || '暂未填写描述'}}</text>
+          <view class="pet-location">
+            <text class="location-icon">📍</text>
+            <text class="location-text">{{item.foundLocation || '校园'}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="list-footer">
+        <text>共 {{petList.length}} 条记录</text>
+      </view>
+    </view>
+  </scroll-view>
+</view>

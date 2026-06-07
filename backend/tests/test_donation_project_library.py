@@ -1,283 +1,311 @@
-# ===== backend/tests/test_donation_project_library.py =====
+# backend/tests/test_donation_project_library.py
 """
-测试 DonationProjectLibrary 所有功能
-运行方式（在项目根目录执行）：
+DonationProjectLibrary 完整测试套件
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_donation_project_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_donation_project 表已存在
 """
-from backend.libs.donation_project_library import DonationProjectLibrary
-from backend.utils.db_manager import DatabaseManager
+
+import os
+import sys
+import unittest
 import uuid
-from datetime import datetime
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from backend.libs.donation_project_library import DonationProjectLibrary
+
+PREFIX = "测试项目_"
 
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
+class TestDonationProjectLibrary(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = DonationProjectLibrary()
+        cls._cleanup_all()
 
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
+    def setUp(self):
+        self.project_ids = []
 
-def main():
-    project_lib = DonationProjectLibrary()
-    db = project_lib.db
+    def tearDown(self):
+        if not self.project_ids:
+            return
+        if self.lib.db.open_database():
+            for pid in self.project_ids:
+                self.lib.db.execute_raw_sql("DELETE FROM t_donation_project WHERE project_id=%s", (pid,))
+            self.lib.db.close_database()
 
-    # ======== 清理旧测试数据 ========
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_donation_project WHERE title LIKE '测试项目_%'")
-        db.close_database()
-        print("已清理旧测试数据")
-    else:
-        print("⚠️ 清理旧数据时数据库连接失败")
+    @classmethod
+    def _cleanup_all(cls):
+        if cls.lib.db.open_database():
+            cls.lib.db.execute_raw_sql("DELETE FROM t_donation_project WHERE title LIKE %s", (f"{PREFIX}%",))
+            cls.lib.db.close_database()
 
-    # ======== 准备测试数据 ========
-    test_title = f"测试项目_{uuid.uuid4().hex[:6]}"
-    test_description = "这是一个测试募捐项目"
-    test_target_amount = 1000.00
+    # ---- 辅助 ----
 
-    # ========== 1. 测试创建募捐项目 ==========
-    print("\n" + "=" * 50 + "\n  开始测试 DonationProjectLibrary\n" + "=" * 50)
-    print("\n1. 测试创建募捐项目 (create_project)...")
+    def _add_project(self, **kw) -> int:
+        kw.setdefault("title", f"{PREFIX}{uuid.uuid4().hex[:8]}")
+        kw.setdefault("description", "测试描述")
+        kw.setdefault("target_amount", 1000.0)
+        r = self.lib.create_project(**kw)
+        if not r.get("success"):
+            raise RuntimeError(f"创建项目失败: {r}")
+        pid = r["data"]["project_id"]
+        self.project_ids.append(pid)
+        return pid
 
-    # 1.1 正常创建
-    result = project_lib.create_project(test_title, test_description, test_target_amount)
-    if result["success"] and result["data"] and result["data"].get("project_id"):
-        project_id = result["data"]["project_id"]
-        log_pass(f"创建募捐项目，title={test_title}", f"project_id={project_id}")
-    else:
-        log_fail("创建募捐项目", f"失败，message={result['message']}")
-        project_id = None
+    # ==================== create_project ====================
 
-    # 1.2 标题为空
-    result = project_lib.create_project("", "描述", 100.0)
-    if not result["success"] and "标题不能为空" in result["message"]:
-        log_pass("标题为空时创建项目", f"返回 False, message={result['message']}")
-    else:
-        log_fail("标题为空时创建项目", f"返回 {result['success']}, message={result['message']}")
+    def test_create_success(self):
+        title = f"{PREFIX}{uuid.uuid4().hex[:8]}"
+        r = self.lib.create_project(title, "描述", 1000.0)
+        self.assertTrue(r["success"])
+        self.assertIsNotNone(r["data"]["project_id"])
+        self.assertIn("created_at", r["data"])
 
-    # 1.3 标题为纯空格
-    result = project_lib.create_project("   ", "描述", 100.0)
-    if not result["success"] and "标题不能为空" in result["message"]:
-        log_pass("标题为纯空格时创建项目", f"返回 False, message={result['message']}")
-    else:
-        log_fail("标题为纯空格时创建项目", f"返回 {result['success']}, message={result['message']}")
+    def test_create_empty_title(self):
+        r = self.lib.create_project("", "描述", 100.0)
+        self.assertFalse(r["success"])
+        self.assertIn("标题不能为空", r["message"])
 
-    # ========== 2. 测试查询募捐项目详情 ==========
-    print("\n2. 测试查询募捐项目详情 (get_project_by_id)...")
-    if project_id:
-        result = project_lib.get_project_by_id(project_id)
-        if result["success"] and result["data"]["project_id"] == project_id:
-            log_pass(f"查询项目 {project_id}", f"title={result['data']['title']}, target_amount={result['data']['target_amount']}")
-        else:
-            log_fail("查询项目详情", f"失败，message={result['message']}")
+    def test_create_whitespace_title(self):
+        r = self.lib.create_project("   ", "描述", 100.0)
+        self.assertFalse(r["success"])
+        self.assertIn("标题不能为空", r["message"])
 
-        # 2.2 查询不存在的项目
-        result = project_lib.get_project_by_id(999999)
-        if not result["success"] and "不存在" in result["message"]:
-            log_pass("查询不存在的项目", f"返回 False, message={result['message']}")
-        else:
-            log_fail("查询不存在的项目", f"返回 {result['success']}, message={result['message']}")
-    else:
-        log_fail("查询项目详情，但 project_id 为空", "")
+    # ==================== get_project_by_id ====================
 
-    # ========== 3. 测试更新募捐项目 ==========
-    print("\n3. 测试更新募捐项目 (update_project)...")
-    if project_id:
-        # 3.1 正常更新
-        new_title = f"更新后的_{test_title}"
-        update_data = {"title": new_title, "description": "更新后的描述", "target_amount": 2000.00}
-        result = project_lib.update_project(project_id, update_data)
-        if result["success"]:
-            log_pass(f"更新项目 {project_id}", "返回 True")
-            # 验证更新结果
-            detail = project_lib.get_project_by_id(project_id)
-            if detail["success"] and detail["data"]["title"] == new_title:
-                log_pass("验证更新结果", f"title 已更新为 {new_title}")
-            else:
-                log_fail("验证更新结果", "title 未更新")
-        else:
-            log_fail("更新项目", f"失败，message={result['message']}")
+    def test_get_by_id_success(self):
+        pid = self._add_project(title="详情测试")
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["project_id"], pid)
+        self.assertEqual(d["title"], "详情测试")
+        self.assertEqual(d["target_amount"], 1000.0)
+        self.assertEqual(d["current_amount"], 0.0)
+        self.assertEqual(d["participant_count"], 0)
+        self.assertEqual(d["status"], 1)
+        for f in ["project_id", "title", "description", "target_amount", "current_amount",
+                   "participant_count", "status", "created_at"]:
+            self.assertIn(f, d)
 
-        # 3.2 更新不存在的项目
-        result = project_lib.update_project(999999, {"title": "不存在"})
-        if not result["success"] and "不存在" in result["message"]:
-            log_pass("更新不存在的项目", f"返回 False, message={result['message']}")
-        else:
-            log_fail("更新不存在的项目", f"返回 {result['success']}, message={result['message']}")
+    def test_get_by_id_not_exists(self):
+        self.assertFalse(self.lib.get_project_by_id(999999)["success"])
 
-        # 3.3 更新不允许的字段（current_amount / participant_count 应该被过滤）
-        result = project_lib.update_project(project_id, {"current_amount": 9999.00, "participant_count": 999})
-        if not result["success"] and "没有需要更新的有效字段" in result["message"]:
-            log_pass("更新不允许的字段", f"返回 False, message={result['message']}")
-        else:
-            detail = project_lib.get_project_by_id(project_id)
-            if detail["success"] and detail["data"]["current_amount"] != 9999.00:
-                log_pass("更新不允许的字段", "字段被正确过滤，未更新")
-            else:
-                log_fail("更新不允许的字段", f"current_amount 被错误更新为 {detail['data']['current_amount']}")
+    # ==================== update_project ====================
 
-        # 3.4 空更新数据
-        result = project_lib.update_project(project_id, {})
-        if not result["success"] and "没有需要更新的有效字段" in result["message"]:
-            log_pass("空更新数据", f"返回 False, message={result['message']}")
-        else:
-            log_fail("空更新数据", f"返回 {result['success']}, message={result['message']}")
-    else:
-        log_fail("更新项目测试，但 project_id 为空", "")
+    def test_update_success(self):
+        pid = self._add_project()
+        r = self.lib.update_project(pid, {"title": "新标题", "target_amount": 2000.0})
+        self.assertTrue(r["success"])
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["title"], "新标题")
+        self.assertEqual(d["target_amount"], 2000.0)
 
-    # ========== 4. 测试获取所有募捐项目 ==========
-    print("\n4. 测试获取所有募捐项目 (get_all_projects)...")
-    result = project_lib.get_all_projects(page=1, page_size=10)
-    if result["success"] and result["data"]["total"] >= 1:
-        log_pass("获取所有项目列表", f"共 {result['data']['total']} 条记录")
-    else:
-        log_fail("获取所有项目列表", f"失败或条数不对，total={result['data']['total']}")
+    def test_update_not_exists(self):
+        self.assertFalse(self.lib.update_project(999999, {"title": "x"})["success"])
 
-    # ========== 5. 测试按状态筛选 ==========
-    print("\n5. 测试按状态筛选 (get_projects_by_status)...")
-    # 5.1 筛选进行中（status=1）
-    result = project_lib.get_projects_by_status(status=1, page=1, page_size=10)
-    if result["success"]:
-        log_pass("筛选状态=1的项目", f"共 {result['data']['total']} 条记录")
-    else:
-        log_fail("筛选状态=1的项目", f"失败，message={result['message']}")
+    def test_update_forbidden_fields(self):
+        pid = self._add_project()
+        r = self.lib.update_project(pid, {"current_amount": 9999.0, "participant_count": 999})
+        self.assertFalse(r["success"])
+        self.assertIn("没有需要更新", r["message"])
+        # 确认确实没改
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["current_amount"], 0.0)
 
-    # 5.2 筛选已结束（status=0）
-    result = project_lib.get_projects_by_status(status=0, page=1, page_size=10)
-    if result["success"]:
-        log_pass("筛选状态=0的项目", f"共 {result['data']['total']} 条记录")
-    else:
-        log_fail("筛选状态=0的项目", f"失败，message={result['message']}")
+    def test_update_empty_data(self):
+        pid = self._add_project()
+        r = self.lib.update_project(pid, {})
+        self.assertFalse(r["success"])
+        self.assertIn("没有需要更新", r["message"])
 
-    # ========== 6. 测试模糊搜索 ==========
-    print("\n6. 测试模糊搜索 (search_projects_by_title)...")
-    # 6.1 搜索存在的项目
-    result = project_lib.search_projects_by_title(keyword=test_title[:4], page=1, page_size=10)
-    if result["success"] and result["data"]["total"] >= 1:
-        log_pass(f"搜索关键字 '{test_title[:4]}'", f"共 {result['data']['total']} 条记录")
-    else:
-        log_fail("模糊搜索", f"失败或条数不对，total={result['data']['total']}")
+    def test_update_status(self):
+        pid = self._add_project()
+        self.lib.update_project(pid, {"status": 0})
+        self.assertEqual(self.lib.get_project_by_id(pid)["data"]["status"], 0)
 
-    # 6.2 搜索不存在的项目
-    result = project_lib.search_projects_by_title(keyword="不存在的项目关键字12345", page=1, page_size=10)
-    if result["success"] and result["data"]["total"] == 0:
-        log_pass("搜索不存在的项目", "共 0 条记录")
-    else:
-        log_fail("搜索不存在的项目", f"total={result['data']['total']}")
+    # ==================== delete_project ====================
 
-    # ========== 7. 测试项目统计摘要 ==========
-    print("\n7. 测试项目统计摘要 (get_project_summary)...")
-    if project_id:
-        result = project_lib.get_project_summary(project_id)
-        if result["success"] and result["data"]["project_id"] == project_id:
-            data = result["data"]
-            log_pass(f"获取项目 {project_id} 摘要",
-                     f"target={data['target_amount']}, current={data['current_amount']}, "
-                     f"completion={data['completion_percentage']}%, donations={data['total_donation_count']}")
-        else:
-            log_fail("获取项目统计摘要", f"失败，message={result['message']}")
+    def test_delete_success(self):
+        pid = self._add_project()
+        r = self.lib.delete_project(pid)
+        self.assertTrue(r["success"])
+        self.assertFalse(self.lib.get_project_by_id(pid)["success"])
+        self.project_ids.remove(pid)
 
-        # 7.2 查询不存在的项目摘要
-        result = project_lib.get_project_summary(999999)
-        if not result["success"] and "不存在" in result["message"]:
-            log_pass("获取不存在项目的摘要", f"返回 False, message={result['message']}")
-        else:
-            log_fail("获取不存在项目的摘要", f"返回 {result['success']}, message={result['message']}")
-    else:
-        log_fail("项目统计摘要测试，但 project_id 为空", "")
+    def test_delete_not_exists(self):
+        self.assertFalse(self.lib.delete_project(999999)["success"])
 
-    # ========== 8. 测试删除募捐项目 ==========
-    print("\n8. 测试删除募捐项目 (delete_project)...")
-    # 先创建一个新项目用于删除测试
-    delete_test_title = f"测试项目_删除_{uuid.uuid4().hex[:6]}"
-    create_result = project_lib.create_project(delete_test_title, "用于删除测试", 500.00)
-    if create_result["success"]:
-        delete_project_id = create_result["data"]["project_id"]
+    # ==================== get_all_projects ====================
 
-        # 8.1 正常删除
-        result = project_lib.delete_project(delete_project_id)
-        if result["success"]:
-            log_pass(f"删除项目 {delete_project_id}", "返回 True")
-            # 验证已删除
-            detail = project_lib.get_project_by_id(delete_project_id)
-            if not detail["success"] and "不存在" in detail["message"]:
-                log_pass("验证项目已删除", "项目确实已删除")
-            else:
-                log_fail("验证项目已删除", "项目仍然存在")
-        else:
-            log_fail("删除项目", f"失败，message={result['message']}")
+    def test_get_all_success(self):
+        self._add_project()
+        r = self.lib.get_all_projects()
+        self.assertTrue(r["success"])
+        self.assertGreaterEqual(r["data"]["total"], 1)
+        self.assertIn("projects", r["data"])
+        self.assertIn("total", r["data"])
 
-    # 8.2 删除不存在的项目
-    result = project_lib.delete_project(999999)
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("删除不存在的项目", f"返回 False, message={result['message']}")
-    else:
-        log_fail("删除不存在的项目", f"返回 {result['success']}, message={result['message']}")
+    def test_get_all_pagination(self):
+        for _ in range(3):
+            self._add_project()
+        p1 = self.lib.get_all_projects(page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["projects"]), 2)
+        p2 = self.lib.get_all_projects(page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["projects"]), 1)
 
-    # ========== 9. 测试内部统计更新方法 ==========
-    print("\n9. 测试内部统计更新 (_update_project_stats)...")
-    # 创建一个新项目用于测试统计更新
-    stats_test_title = f"测试项目_统计_{uuid.uuid4().hex[:6]}"
-    create_result = project_lib.create_project(stats_test_title, "用于统计测试", 10000.00)
-    if create_result["success"]:
-        stats_project_id = create_result["data"]["project_id"]
+    def test_get_all_empty(self):
+        # 清空后查
+        if self.lib.db.open_database():
+            self.lib.db.execute_raw_sql("DELETE FROM t_donation_project")
+            self.lib.db.close_database()
+        r = self.lib.get_all_projects()
+        self.assertEqual(r["data"]["total"], 0)
 
-        # 9.1 增加金额和人数
-        success = project_lib._update_project_stats(stats_project_id, 500.00, 1)
-        if success:
-            log_pass("增加项目统计", "amount +500, participant +1")
-            detail = project_lib.get_project_by_id(stats_project_id)
-            if detail["success"] and detail["data"]["current_amount"] == 500.00 and detail["data"]["participant_count"] == 1:
-                log_pass("验证增加统计结果", "current_amount=500.00, participant_count=1")
-            else:
-                log_fail("验证增加统计结果", f"current_amount={detail['data']['current_amount']}, participant_count={detail['data']['participant_count']}")
-        else:
-            log_fail("增加项目统计", "返回 False")
+    # ==================== get_projects_by_status ====================
 
-        # 9.2 减少金额和人数
-        success = project_lib._update_project_stats(stats_project_id, -200.00, -1)
-        if success:
-            log_pass("减少项目统计", "amount -200, participant -1")
-            detail = project_lib.get_project_by_id(stats_project_id)
-            if detail["success"] and detail["data"]["current_amount"] == 300.00 and detail["data"]["participant_count"] == 0:
-                log_pass("验证减少统计结果", "current_amount=300.00, participant_count=0")
-            else:
-                log_fail("验证减少统计结果", f"current_amount={detail['data']['current_amount']}, participant_count={detail['data']['participant_count']}")
-        else:
-            log_fail("减少项目统计", "返回 False")
+    def test_get_by_status_success(self):
+        pid = self._add_project()
+        r1 = self.lib.get_projects_by_status(1)
+        self.assertGreaterEqual(r1["data"]["total"], 1)
 
-        # 9.3 减少到负数（应该被限制为0）
-        success = project_lib._update_project_stats(stats_project_id, -500.00, -1)
-        if success:
-            log_pass("减少到负数边界", "amount -500, participant -1")
-            detail = project_lib.get_project_by_id(stats_project_id)
-            if detail["success"] and detail["data"]["current_amount"] == 0.00 and detail["data"]["participant_count"] == 0:
-                log_pass("验证边界限制", "current_amount=0.00, participant_count=0")
-            else:
-                log_fail("验证边界限制", f"current_amount={detail['data']['current_amount']}, participant_count={detail['data']['participant_count']}")
-        else:
-            log_fail("减少到负数边界", "返回 False")
+        self.lib.update_project(pid, {"status": 0})
+        r0 = self.lib.get_projects_by_status(0)
+        self.assertGreaterEqual(r0["data"]["total"], 1)
 
-        # 9.4 更新不存在的项目
-        success = project_lib._update_project_stats(999999, 100.00, 1)
-        if not success:
-            log_pass("更新不存在项目的统计", "返回 False")
-        else:
-            log_fail("更新不存在项目的统计", "返回 True，预期 False")
-    else:
-        log_fail("创建用于统计测试的项目失败", f"message={create_result['message']}")
+    def test_get_by_status_empty(self):
+        r = self.lib.get_projects_by_status(99)
+        self.assertEqual(r["data"]["total"], 0)
 
-    # ========== 10. 清理测试数据 ==========
-    print("\n10. 清理测试数据...")
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_donation_project WHERE title LIKE '测试项目_%'")
-        db.close_database()
-        log_pass("清理测试数据", "删除所有测试项目数据")
-    else:
-        log_fail("清理测试数据", "数据库连接失败，请手动删除")
+    def test_get_by_status_pagination(self):
+        for _ in range(3):
+            self._add_project()
+        self.assertEqual(len(self.lib.get_projects_by_status(1, 1, 2)["data"]["projects"]), 2)
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    # ==================== search_projects_by_title ====================
+
+    def test_search_success(self):
+        title = f"{PREFIX}搜索目标{uuid.uuid4().hex[:6]}"
+        self._add_project(title=title)
+        r = self.lib.search_projects_by_title("搜索目标")
+        self.assertGreaterEqual(r["data"]["total"], 1)
+
+    def test_search_not_found(self):
+        r = self.lib.search_projects_by_title("不存在关键字xyz123")
+        self.assertEqual(r["data"]["total"], 0)
+
+    def test_search_pagination(self):
+        title = f"{PREFIX}分页搜索{uuid.uuid4().hex[:4]}"
+        for _ in range(3):
+            self._add_project(title=f"{title}_{uuid.uuid4().hex[:4]}")
+        self.assertEqual(len(self.lib.search_projects_by_title("分页搜索", 1, 2)["data"]["projects"]), 2)
+
+    # ==================== _update_project_stats ====================
+
+    def test_stats_increase(self):
+        pid = self._add_project(target_amount=10000.0)
+        self.assertTrue(self.lib._update_project_stats(pid, 500.0, 1))
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["current_amount"], 500.0)
+        self.assertEqual(d["participant_count"], 1)
+
+    def test_stats_decrease(self):
+        pid = self._add_project(target_amount=10000.0)
+        self.lib._update_project_stats(pid, 500.0, 1)
+        self.lib._update_project_stats(pid, -200.0, -1)
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["current_amount"], 300.0)
+        self.assertEqual(d["participant_count"], 0)
+
+    def test_stats_negative_boundary(self):
+        pid = self._add_project(target_amount=10000.0)
+        self.lib._update_project_stats(pid, 100.0, 1)
+        self.lib._update_project_stats(pid, -500.0, -1)
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["current_amount"], 0.0)
+        self.assertEqual(d["participant_count"], 0)
+
+    def test_stats_not_exists(self):
+        self.assertFalse(self.lib._update_project_stats(999999, 100.0, 1))
+
+    # ==================== get_project_summary ====================
+
+    def test_summary_success(self):
+        pid = self._add_project(title="摘要测试", target_amount=1000.0)
+        self.lib._update_project_stats(pid, 300.0, 2)
+        d = self.lib.get_project_summary(pid)["data"]
+        self.assertEqual(d["project_id"], pid)
+        self.assertEqual(d["target_amount"], 1000.0)
+        self.assertEqual(d["current_amount"], 300.0)
+        self.assertEqual(d["completion_percentage"], 30.0)
+        self.assertEqual(d["participant_count"], 2)
+        self.assertEqual(d["total_donation_count"], 0)
+        for f in ["project_id", "title", "target_amount", "current_amount",
+                   "completion_percentage", "participant_count", "total_donation_count",
+                   "status", "created_at"]:
+            self.assertIn(f, d)
+
+    def test_summary_zero_target(self):
+        """目标金额为0时完成百分比应为0，不除零"""
+        pid = self._add_project(target_amount=0.0)
+        d = self.lib.get_project_summary(pid)["data"]
+        self.assertEqual(d["completion_percentage"], 0.0)
+
+    def test_summary_not_exists(self):
+        self.assertFalse(self.lib.get_project_summary(999999)["success"])
+
+    # ==================== DB 连接失败批量覆盖 ====================
+
+    def test_db_connection_fail(self):
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.create_project("t", "d", 1.0)["success"])
+            self.assertFalse(self.lib.get_project_by_id(1)["success"])
+            self.assertFalse(self.lib.update_project(1, {"title": "x"})["success"])
+            self.assertFalse(self.lib.delete_project(1)["success"])
+            self.assertFalse(self.lib.get_all_projects()["success"])
+            self.assertFalse(self.lib.get_projects_by_status(1)["success"])
+            self.assertFalse(self.lib.search_projects_by_title("x")["success"])
+            self.assertFalse(self.lib.get_project_summary(1)["success"])
+            self.assertFalse(self.lib._update_project_stats(1, 1.0, 1))
+
+    # ==================== 综合场景 ====================
+
+    def test_full_lifecycle(self):
+        """创建 -> 查询 -> 更新 -> 统计 -> 摘要 -> 删除"""
+        pid = self._add_project(title="生命周期", target_amount=5000.0)
+
+        d = self.lib.get_project_by_id(pid)["data"]
+        self.assertEqual(d["status"], 1)
+
+        self.lib.update_project(pid, {"title": "已更新", "status": 0})
+        self.assertEqual(self.lib.get_project_by_id(pid)["data"]["title"], "已更新")
+
+        self.lib._update_project_stats(pid, 2500.0, 3)
+        s = self.lib.get_project_summary(pid)["data"]
+        self.assertEqual(s["completion_percentage"], 50.0)
+        self.assertEqual(s["participant_count"], 3)
+
+        self.lib.delete_project(pid)
+        self.assertFalse(self.lib.get_project_by_id(pid)["success"])
+        self.project_ids.remove(pid)
+
+    def test_create_then_list_and_search(self):
+        """创建后能在列表和搜索中找到"""
+        title = f"{PREFIX}能找到吗{uuid.uuid4().hex[:6]}"
+        pid = self._add_project(title=title)
+        self.assertGreaterEqual(self.lib.get_all_projects()["data"]["total"], 1)
+        self.assertGreaterEqual(self.lib.search_projects_by_title("能找到吗")["data"]["total"], 1)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

@@ -1,8 +1,21 @@
+# ===== backend/libs/follow_library.py =====
+"""
+关注关系业务逻辑层
+提供关注、取消关注、关注状态查询、关注/粉丝列表、数量统计等功能
+依赖：utils/db_manager.py 中的 DatabaseManager 基类
+"""
+
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
 
 
 class FollowLibrary:
+    """
+    关注关系业务逻辑库（组合模式）
+    持有 DatabaseManager 实例，通过 self.db 操作数据库
+    """
+
     def __init__(self):
         self.db = DatabaseManager()
 
@@ -11,34 +24,39 @@ class FollowLibrary:
     def follow_user(self, from_user_id: str, to_user_id: str) -> dict:
         """
         关注用户
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         try:
             if not from_user_id or not to_user_id:
-                return {"success": False, "message": "参数不能为空", "data": None}
+                return error_response("参数不能为空")
             if from_user_id == to_user_id:
-                return {"success": False, "message": "不能关注自己", "data": None}
+                return error_response("不能关注自己")
 
-            # 用户有效性检查（事务外）
+            # 用户有效性检查（使用统一后的 user_lib API）
             from backend.libs.user_library import UserLibrary
             user_lib = UserLibrary()
-            if not user_lib.verify_user_validity(from_user_id):
-                return {"success": False, "message": "关注者不存在或已注销", "data": None}
-            if not user_lib.verify_user_validity(to_user_id):
-                return {"success": False, "message": "被关注者不存在或已注销", "data": None}
+
+            validity_result = user_lib.verify_user_validity(from_user_id)
+            if not validity_result["success"] or not validity_result["data"]["is_valid"]:
+                return error_response("关注者不存在或已注销")
+
+            validity_result = user_lib.verify_user_validity(to_user_id)
+            if not validity_result["success"] or not validity_result["data"]["is_valid"]:
+                return error_response("被关注者不存在或已注销")
 
             # 检查是否已关注
             status_result = self.check_follow_status(from_user_id, to_user_id)
             if not status_result["success"]:
                 return status_result
             if status_result["data"]["is_following"]:
-                return {"success": True, "message": "已关注该用户，无需重复关注", "data": None}
+                return success_response("已关注该用户，无需重复关注")
 
             # 开启事务
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             if not self.db.begin_transaction():
                 self.db.close_database()
-                return {"success": False, "message": "事务开启失败", "data": None}
+                return error_response("事务开启失败")
 
             try:
                 now = datetime.now()
@@ -67,62 +85,65 @@ class FollowLibrary:
                 )
 
                 self.db.commit()
-                return {
-                    "success": True,
-                    "message": "关注成功",
-                    "data": {
+                return success_response(
+                    "关注成功",
+                    data={
                         "follow_id": follow_id,
                         "created_at": now.strftime("%Y-%m-%d %H:%M:%S")
                     }
-                }
+                )
             except Exception as e:
                 self.db.rollback()
-                return {"success": False, "message": f"关注失败：{str(e)}", "data": None}
+                return error_response(f"关注失败：{str(e)}")
             finally:
                 self.db.close_database()
         except Exception as e:
-            return {"success": False, "message": f"关注异常：{str(e)}", "data": None}
+            return error_response(f"关注异常：{str(e)}")
 
     def unfollow_user(self, from_user_id: str, to_user_id: str) -> dict:
         """
         取消关注用户
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         try:
             if not from_user_id or not to_user_id:
-                return {"success": False, "message": "参数不能为空", "data": None}
+                return error_response("参数不能为空")
             if from_user_id == to_user_id:
-                return {"success": False, "message": "不能对自己操作", "data": None}
+                return error_response("不能对自己操作")
 
             from backend.libs.user_library import UserLibrary
             user_lib = UserLibrary()
-            if not user_lib.verify_user_validity(from_user_id):
-                return {"success": False, "message": "关注者不存在或已注销", "data": None}
-            if not user_lib.verify_user_validity(to_user_id):
-                return {"success": False, "message": "被关注者不存在或已注销", "data": None}
+
+            validity_result = user_lib.verify_user_validity(from_user_id)
+            if not validity_result["success"] or not validity_result["data"]["is_valid"]:
+                return error_response("关注者不存在或已注销")
+
+            validity_result = user_lib.verify_user_validity(to_user_id)
+            if not validity_result["success"] or not validity_result["data"]["is_valid"]:
+                return error_response("被关注者不存在或已注销")
 
             status_result = self.check_follow_status(from_user_id, to_user_id)
             if not status_result["success"]:
                 return status_result
             if not status_result["data"]["is_following"]:
-                return {"success": False, "message": "尚未关注该用户，无法取消", "data": None}
+                return error_response("尚未关注该用户，无法取消")
 
             # 查询 follow_id（事务外）
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             follow_record = self.db.execute_raw_sql(
                 "SELECT follow_id FROM t_follow WHERE from_user_id = %s AND to_user_id = %s LIMIT 1",
                 (from_user_id, to_user_id)
             )
             if not follow_record:
-                return {"success": False, "message": "未找到关注记录", "data": None}
+                self.db.close_database()
+                return error_response("未找到关注记录")
             follow_id = follow_record[0]["follow_id"]
 
             # 开启事务
-            if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
             if not self.db.begin_transaction():
                 self.db.close_database()
-                return {"success": False, "message": "事务开启失败", "data": None}
+                return error_response("事务开启失败")
 
             try:
                 # 删除关注记录
@@ -140,26 +161,23 @@ class FollowLibrary:
                 )
 
                 self.db.commit()
-                return {
-                    "success": True,
-                    "message": "取消关注成功",
-                    "data": {"unfollowed": True}
-                }
+                return success_response("取消关注成功", data={"unfollowed": True})
             except Exception as e:
                 self.db.rollback()
-                return {"success": False, "message": f"取消关注失败：{str(e)}", "data": None}
+                return error_response(f"取消关注失败：{str(e)}")
             finally:
                 self.db.close_database()
         except Exception as e:
-            return {"success": False, "message": f"取消关注异常：{str(e)}", "data": None}
+            return error_response(f"取消关注异常：{str(e)}")
 
     def check_follow_status(self, from_user_id: str, to_user_id: str) -> dict:
         """
         检查用户是否已关注另一个用户
+        :return: dict {"success": bool, "message": str, "data": {"is_following": bool}}
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
 
             result = self.db.execute_raw_sql(
                 "SELECT 1 FROM t_follow WHERE from_user_id = %s AND to_user_id = %s LIMIT 1",
@@ -168,13 +186,12 @@ class FollowLibrary:
             is_following = bool(result)
 
             self.db.close_database()
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {"is_following": is_following}
-            }
+            return success_response(
+                "成功",
+                data={"is_following": is_following}
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询关注状态失败：{str(e)}", "data": None}
+            return error_response(f"查询关注状态失败：{str(e)}")
         finally:
             if self.db.connection:
                 self.db.close_database()
@@ -184,10 +201,11 @@ class FollowLibrary:
     def get_following_list(self, user_id: str, page: int = 1, page_size: int = 20) -> dict:
         """
         获取用户的关注列表（含互相关注标记）
+        :return: dict {"success": bool, "message": str, "data": dict}
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
 
             offset = (page - 1) * page_size
 
@@ -231,27 +249,27 @@ class FollowLibrary:
                         "is_mutual": bool(r.get("is_mutual", 0))
                     })
 
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {
+            return success_response(
+                "成功",
+                data={
                     "records": following_list,
                     "total": total,
                     "page": page,
                     "page_size": page_size,
                     "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询关注列表失败：{str(e)}", "data": None}
+            return error_response(f"查询关注列表失败：{str(e)}")
 
     def get_follower_list(self, user_id: str, page: int = 1, page_size: int = 20) -> dict:
         """
         获取用户的粉丝列表（含"我是否已关注"标记）
+        :return: dict {"success": bool, "message": str, "data": dict}
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
 
             offset = (page - 1) * page_size
 
@@ -294,48 +312,57 @@ class FollowLibrary:
                         "is_following_back": bool(r.get("is_following_back", 0))
                     })
 
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {
+            return success_response(
+                "成功",
+                data={
                     "records": follower_list,
                     "total": total,
                     "page": page,
                     "page_size": page_size,
                     "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询粉丝列表失败：{str(e)}", "data": None}
+            return error_response(f"查询粉丝列表失败：{str(e)}")
 
     # ==================== 数量统计 ====================
 
     def get_following_count(self, user_id: str) -> dict:
+        """
+        获取用户关注数量
+        :return: dict: {"success": bool, "message": str, "data": {"following_count": int}}
+        """
         try:
             from backend.libs.user_library import UserLibrary
             user_lib = UserLibrary()
-            user_profile = user_lib.get_user_profile(user_id)
-            if not user_profile:
-                return {"success": False, "message": "用户不存在", "data": None}
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {"following_count": user_profile["following_count"]}
-            }
+            profile_result = user_lib.get_user_profile(user_id)
+
+            if not profile_result["success"]:
+                return profile_result  # 透传错误
+
+            return success_response(
+                "成功",
+                data={"following_count": profile_result["data"]["following_count"]}
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询关注数量失败：{str(e)}", "data": None}
+            return error_response(f"查询关注数量失败：{str(e)}")
 
     def get_follower_count(self, user_id: str) -> dict:
+        """
+        获取用户粉丝数量
+        :return: dict: {"success": bool, "message": str, "data": {"follower_count": int}}
+        """
         try:
             from backend.libs.user_library import UserLibrary
             user_lib = UserLibrary()
-            user_profile = user_lib.get_user_profile(user_id)
-            if not user_profile:
-                return {"success": False, "message": "用户不存在", "data": None}
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {"follower_count": user_profile["follower_count"]}
-            }
+            profile_result = user_lib.get_user_profile(user_id)
+
+            if not profile_result["success"]:
+                return profile_result  # 透传错误
+
+            return success_response(
+                "成功",
+                data={"follower_count": profile_result["data"]["follower_count"]}
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询粉丝数量失败：{str(e)}", "data": None}
+            return error_response(f"查询粉丝数量失败：{str(e)}")

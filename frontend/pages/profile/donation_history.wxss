@@ -1,0 +1,102 @@
+page {
+  background-color: #FFF8E7;
+}
+
+.container {
+  padding: 0 30rpx 30rpx 30rpx;
+  background-color: #FFF8E7;
+}
+
+.header {
+  text-align: center;
+  padding-top: 30rpx;
+  margin-bottom: 40rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.total-section {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 40rpx;
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+
+.total-label {
+  font-size: 28rpx;
+  color: #666;
+  display: block;
+  margin-bottom: 20rpx;
+}
+
+.total-amount {
+  font-size: 60rpx;
+  font-weight: bold;
+  color: #ff6b81;
+}
+
+.empty-tip {
+  text-align: center;
+  color: #999;
+  margin-top: 100rpx;
+  font-size: 28rpx;
+}
+
+.donation-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.donation-card {
+  display: flex;
+  align-items: center;
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 30rpx;
+  margin-bottom: 30rpx;
+  width: 100%;
+}
+
+.project-image {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 12rpx;
+  background-color: #eee;
+  flex-shrink: 0;
+}
+
+.donation-info {
+  margin-left: 30rpx;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.project-name {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.donation-amount {
+  font-size: 28rpx;
+  color: #ff6b81;
+  margin-top: 15rpx;
+}
+
+.donation-time {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 10rpx;
+}
+
+.donation-status {
+  font-size: 24rpx;
+  color: #4caf50;
+  margin-top: 10rpx;
+}

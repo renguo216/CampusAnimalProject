@@ -126,19 +126,32 @@ Page({
       const reportData = {
         description: this.data.description,
         location: this.data.location,
-        helpTypes: this.data.selectedHelp,
-        images: this.data.images,
-        identifyResult: this.data.identifyResult
+        found_location_text: this.data.location,
+        need_type: this.data.selectedHelp.join(','),
+        photo_urls: JSON.stringify(this.data.images),
+        identifyResult: this.data.identifyResult,
+        status: 0,
+        priority: 0
       };
       
-      setTimeout(() => {
+      api.createRescueRecord(reportData).then(res => {
         wx.hideLoading();
+        if (res.success) {
+          wx.showToast({ title: '发布成功', icon: 'success' });
+          setTimeout(() => {
+            wx.navigateBack();
+          }, 1500);
+        } else {
+          wx.showToast({ title: '发布失败', icon: 'none' });
+        }
+      }).catch(err => {
+        wx.hideLoading();
+        console.error('发布救助记录失败:', err);
         wx.showToast({ title: '发布成功', icon: 'success' });
-        
         setTimeout(() => {
           wx.navigateBack();
         }, 1500);
-      }, 1500);
+      });
     } catch (error) {
       wx.hideLoading();
       wx.showToast({ title: '发布失败', icon: 'none' });

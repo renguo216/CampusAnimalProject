@@ -1,201 +1,346 @@
-# ===== backend/tests/test_exchange_product_library.py =====
+# backend/tests/test_exchange_product_library.py
 """
-测试 ExchangeProductLibrary 所有功能
-运行方式（在项目根目录执行）：
+ExchangeProductLibrary 完整测试套件（unittest 框架）
+运行方式：
+    cd 项目根目录
     python -m backend.tests.test_exchange_product_library
+
+依赖：
+    - MySQL 数据库已启动且可连接
+    - t_exchange_product 表已存在
 """
-from backend.libs.exchange_product_library import ExchangeProductLibrary
+
+import os
+import sys
+import unittest
 import uuid
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-def log_pass(original, current):
-    print(f"  [PASS] 原始数据 = {original}, 当前数据 = {current}")
-
-
-def log_fail(original, current):
-    print(f"  [FAIL] 原始数据 = {original}, 当前数据 = {current}")
+from backend.libs.exchange_product_library import ExchangeProductLibrary
 
 
-def main():
-    product_lib = ExchangeProductLibrary()
-    db = product_lib.db
+class TestExchangeProductLibrary(unittest.TestCase):
+    """ExchangeProductLibrary 完整功能测试"""
 
-    # ======== 清理旧测试数据 ========
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE '测试商品_%'")
-        db.close_database()
-        print("已清理旧测试数据")
+    @classmethod
+    def setUpClass(cls):
+        cls.lib = ExchangeProductLibrary()
+        cls._cleanup_all()
 
-    print("\n" + "=" * 50 + "\n  开始测试 ExchangeProductLibrary\n" + "=" * 50)
+    @classmethod
+    def tearDownClass(cls):
+        cls._cleanup_all()
 
-    # ========== 1. 创建商品 ==========
-    print("\n1. 测试创建商品 (create_exchange_product)...")
-    p1_name = f"测试商品_{uuid.uuid4().hex[:6]}"
-    result = product_lib.create_exchange_product({
-        "name": p1_name,
-        "description": "测试描述",
-        "points_required": 100,
-        "image_url": "http://example.com/1.jpg",
-        "stock": 10,
-        "status": 1
-    })
-    if result["success"] and result["data"].get("product_id"):
-        p1_id = result["data"]["product_id"]
-        log_pass(f"创建商品 {p1_name}", f"product_id={p1_id}")
-    else:
-        log_fail("创建商品", f"失败，message={result['message']}")
-        p1_id = None
+    def setUp(self):
+        self.product_ids = []
 
-    # 缺少 name
-    result = product_lib.create_exchange_product({"points_required": 50})
-    if not result["success"] and "name" in result["message"]:
-        log_pass("缺少 name", "返回 False")
-    else:
-        log_fail("缺少 name", f"返回 {result['success']}")
-
-    # 缺少 points_required
-    result = product_lib.create_exchange_product({"name": "测试"})
-    if not result["success"] and "points_required" in result["message"]:
-        log_pass("缺少 points_required", "返回 False")
-    else:
-        log_fail("缺少 points_required", f"返回 {result['success']}")
-
-    # ========== 2. 查询商品 ==========
-    print("\n2. 测试查询商品...")
-    if p1_id:
-        result = product_lib.get_exchange_item_by_id(p1_id)
-        if result["success"] and result["data"]["name"] == p1_name:
-            log_pass(f"查询商品 {p1_id}", f"name={result['data']['name']}")
-        else:
-            log_fail("查询商品", "失败")
-
-    result = product_lib.get_exchange_item_by_id(999999)
-    if not result["success"] and "不存在" in result["message"]:
-        log_pass("查询不存在商品", "返回 False")
-    else:
-        log_fail("查询不存在商品", f"返回 {result['success']}")
-
-    # 存在性检查
-    if p1_id:
-        result = product_lib.product_exists(p1_id)
-        if result["success"] and result["data"]["exists"]:
-            log_pass(f"存在性检查 {p1_id}", "exists=True")
-        else:
-            log_fail("存在性检查", f"exists={result['data'].get('exists')}")
-
-    # ========== 3. 查询在售列表 ==========
-    print("\n3. 测试查询在售列表 (get_exchange_items)...")
-    result = product_lib.get_exchange_items(page=1, page_size=10)
-    if result["success"] and result["data"].get("total", 0) >= 1:
-        log_pass("查询在售列表", f"total={result['data']['total']}")
-    else:
-        log_fail("查询在售列表", f"total={result['data'].get('total', 0)}")
-
-    # ========== 4. 更新商品 ==========
-    print("\n4. 测试更新商品 (update_exchange_product)...")
-    if p1_id:
-        result = product_lib.update_exchange_product(p1_id, {"name": "更新后名称", "stock": 20})
-        if result["success"]:
-            log_pass("更新商品", "返回 True")
-            detail = product_lib.get_exchange_item_by_id(p1_id)
-            if detail["success"] and detail["data"]["name"] == "更新后名称":
-                log_pass("验证更新", "name=更新后名称")
+    def tearDown(self):
+        if not self.product_ids:
+            return
+        db = self.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
             else:
-                log_fail("验证更新", f"name={detail['data']['name'] if detail['success'] else '失败'}")
-        else:
-            log_fail("更新商品", "返回 False")
+                need_close = False
+            for pid in self.product_ids:
+                db.execute_raw_sql("DELETE FROM t_exchange_product WHERE product_id=%s", (pid,))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[tearDown 警告] 清理失败: {e}")
+            try:
+                db.close_database()
+            except:
+                pass
 
-        # 非法字段
-        result = product_lib.update_exchange_product(p1_id, {"illegal": "test"})
-        if not result["success"] and "没有有效更新字段" in result["message"]:
-            log_pass("更新非法字段", "被过滤")
-        else:
-            log_fail("更新非法字段", f"返回 {result['success']}")
-
-    # 更新不存在
-    result = product_lib.update_exchange_product(999999, {"name": "test"})
-    if not result["success"]:
-        log_pass("更新不存在商品", "返回 False")
-    else:
-        log_fail("更新不存在商品", "返回 True")
-
-    # ========== 5. 库存管理 ==========
-    print("\n5. 测试库存管理...")
-    if p1_id:
-        result = product_lib.update_product_stock(p1_id, 5)
-        if result["success"]:
-            log_pass("更新库存为5", "返回 True")
-            stock = product_lib.get_product_stock(p1_id)
-            if stock["success"] and stock["data"]["stock"] == 5:
-                log_pass("验证库存", "stock=5")
+    @classmethod
+    def _cleanup_all(cls):
+        db = cls.lib.db
+        try:
+            if db.connection is None:
+                if not db.open_database():
+                    return
+                need_close = True
             else:
-                log_fail("验证库存", f"stock={stock['data']['stock'] if stock['success'] else '失败'}")
-        else:
-            log_fail("更新库存", "返回 False")
+                need_close = False
+            db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE %s", ("test_product_%",))
+            if need_close:
+                db.close_database()
+        except Exception as e:
+            print(f"[_cleanup_all 警告] 清理失败: {e}")
 
-    result = product_lib.update_product_stock(999999, 5)
-    if not result["success"]:
-        log_pass("更新不存在库存", "返回 False")
-    else:
-        log_fail("更新不存在库存", "返回 True")
+    # ---- 辅助方法 ----
 
-    # ========== 6. 上下架 ==========
-    print("\n6. 测试上下架 (toggle_product_status)...")
-    if p1_id:
-        result = product_lib.toggle_product_status(p1_id, 0)
-        if result["success"]:
-            log_pass("下架商品", "返回 True")
-        else:
-            log_fail("下架商品", "返回 False")
+    def _add_product(self, name=None, points_required=100, stock=10, status=1, **kwargs):
+        """创建测试商品并返回 product_id"""
+        if name is None:
+            name = f"test_product_{uuid.uuid4().hex[:8]}"
+        data = {
+            "name": name,
+            "points_required": points_required,
+            "stock": stock,
+            "status": status,
+            **kwargs
+        }
+        r = self.lib.create_exchange_product(data)
+        if not r.get("success"):
+            raise RuntimeError(f"创建商品失败: {r}")
+        pid = r["data"]["product_id"]
+        self.product_ids.append(pid)
+        return pid
 
-        result = product_lib.toggle_product_status(p1_id, 1)
-        if result["success"]:
-            log_pass("上架商品", "返回 True")
-        else:
-            log_fail("上架商品", "返回 False")
+    # ==================== create_exchange_product ====================
 
-    result = product_lib.toggle_product_status(999999, 0)
-    if not result["success"]:
-        log_pass("上下架不存在", "返回 False")
-    else:
-        log_fail("上下架不存在", "返回 True")
+    def test_create_product_success(self):
+        r = self.lib.create_exchange_product({
+            "name": f"test_product_{uuid.uuid4().hex[:8]}",
+            "description": "测试描述",
+            "points_required": 100,
+            "image_url": "http://example.com/1.jpg",
+            "stock": 10,
+            "status": 1
+        })
+        self.assertTrue(r["success"])
+        self.assertIn("product_id", r["data"])
+        self.product_ids.append(r["data"]["product_id"])
 
-    # ========== 7. 删除商品 ==========
-    print("\n7. 测试删除商品 (delete_exchange_product)...")
-    p2_name = f"测试商品_{uuid.uuid4().hex[:6]}"
-    result = product_lib.create_exchange_product({
-        "name": p2_name, "points_required": 50, "stock": 5
-    })
-    if result["success"]:
-        p2_id = result["data"]["product_id"]
-        del_result = product_lib.delete_exchange_product(p2_id)
-        if del_result["success"]:
-            log_pass(f"删除商品 {p2_id}", "成功")
-            check = product_lib.get_exchange_item_by_id(p2_id)
-            if not check["success"]:
-                log_pass("验证删除", "已不存在")
-            else:
-                log_fail("验证删除", "仍存在")
-        else:
-            log_fail("删除商品", "返回 False")
+    def test_create_product_missing_name(self):
+        r = self.lib.create_exchange_product({"points_required": 50, "stock": 5})
+        self.assertFalse(r["success"])
+        self.assertIn("name", r["message"])
 
-    result = product_lib.delete_exchange_product(999999)
-    if not result["success"]:
-        log_pass("删除不存在商品", "返回 False")
-    else:
-        log_fail("删除不存在商品", "返回 True")
+    def test_create_product_missing_points_required(self):
+        r = self.lib.create_exchange_product({"name": "测试商品", "stock": 5})
+        self.assertFalse(r["success"])
+        self.assertIn("points_required", r["message"])
 
-    # ========== 8. 清理 ==========
-    print("\n8. 清理测试数据...")
-    if db.open_database():
-        db.execute_raw_sql("DELETE FROM t_exchange_product WHERE name LIKE '测试商品_%'")
-        db.close_database()
-        log_pass("清理数据", "完成")
-    else:
-        log_fail("清理数据", "连接失败")
+    def test_create_product_default_stock(self):
+        """stock 不是必填，默认值为 0"""
+        r = self.lib.create_exchange_product({
+            "name": f"test_product_{uuid.uuid4().hex[:8]}",
+            "points_required": 50
+        })
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["stock"], 0)
+        self.product_ids.append(r["data"]["product_id"])
 
-    print("\n" + "=" * 50 + "\n  测试完成\n" + "=" * 50)
+    # ==================== get_exchange_item_by_id ====================
+
+    def test_get_item_by_id_success(self):
+        pid = self._add_product(name="查询测试商品", points_required=50)
+        r = self.lib.get_exchange_item_by_id(pid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["name"], "查询测试商品")
+        self.assertEqual(r["data"]["points_required"], 50)
+
+    def test_get_item_by_id_not_found(self):
+        r = self.lib.get_exchange_item_by_id(999999)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== product_exists ====================
+
+    def test_product_exists_true(self):
+        pid = self._add_product()
+        r = self.lib.product_exists(pid)
+        self.assertTrue(r["success"])
+        self.assertTrue(r["data"]["exists"])
+
+    def test_product_exists_false(self):
+        r = self.lib.product_exists(999999)
+        self.assertTrue(r["success"])  # product_exists 始终返回 success=True
+        self.assertFalse(r["data"]["exists"])
+
+    # ==================== get_exchange_items ====================
+    # 注意：get_exchange_items 使用 get_paginated，返回 data.data 为列表
+
+    def test_get_items_success(self):
+        for _ in range(3):
+            self._add_product(status=1)
+        r = self.lib.get_exchange_items(page=1, page_size=20)
+        self.assertTrue(r["success"])
+        self.assertGreaterEqual(r["data"]["total"], 3)
+        self.assertGreaterEqual(len(r["data"]["data"]), 3)
+        for f in ["data", "total", "page", "page_size", "total_pages"]:
+            self.assertIn(f, r["data"])
+
+    def test_get_items_pagination(self):
+        for _ in range(3):
+            self._add_product(status=1)
+        p1 = self.lib.get_exchange_items(page=1, page_size=2)
+        self.assertEqual(len(p1["data"]["data"]), 2)
+        p2 = self.lib.get_exchange_items(page=2, page_size=2)
+        self.assertGreaterEqual(len(p2["data"]["data"]), 1)
+
+    # ==================== update_exchange_product ====================
+
+    def test_update_product_success(self):
+        pid = self._add_product(name="更新前名称")
+        r = self.lib.update_exchange_product(pid, {"name": "更新后名称", "stock": 20})
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["name"], "更新后名称")
+        self.assertEqual(detail["data"]["stock"], 20)
+
+    def test_update_product_illegal_fields(self):
+        pid = self._add_product()
+        r = self.lib.update_exchange_product(pid, {"illegal": "test"})
+        self.assertFalse(r["success"])
+        self.assertIn("没有有效更新字段", r["message"])
+
+    def test_update_product_not_found(self):
+        r = self.lib.update_exchange_product(999999, {"name": "test"})
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== update_product_stock ====================
+
+    def test_update_stock_success(self):
+        pid = self._add_product(stock=10)
+        r = self.lib.update_product_stock(pid, 5)
+        self.assertTrue(r["success"])
+        stock = self.lib.get_product_stock(pid)
+        self.assertEqual(stock["data"]["stock"], 5)
+
+    def test_update_stock_not_found(self):
+        r = self.lib.update_product_stock(999999, 5)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== get_product_stock ====================
+
+    def test_get_stock_success(self):
+        pid = self._add_product(stock=15)
+        r = self.lib.get_product_stock(pid)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["data"]["stock"], 15)
+
+    def test_get_stock_not_found(self):
+        r = self.lib.get_product_stock(999999)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== toggle_product_status ====================
+
+    def test_toggle_status_off(self):
+        pid = self._add_product(status=1)
+        r = self.lib.toggle_product_status(pid, 0)
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["status"], 0)
+
+    def test_toggle_status_on(self):
+        pid = self._add_product(status=0)
+        r = self.lib.toggle_product_status(pid, 1)
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["status"], 1)
+
+    def test_toggle_status_not_found(self):
+        r = self.lib.toggle_product_status(999999, 0)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== delete_exchange_product ====================
+
+    def test_delete_product_success(self):
+        pid = self._add_product()
+        r = self.lib.delete_exchange_product(pid)
+        self.assertTrue(r["success"])
+        check = self.lib.get_exchange_item_by_id(pid)
+        self.assertFalse(check["success"])
+        self.assertIn("不存在", check["message"])
+
+    def test_delete_product_not_found(self):
+        r = self.lib.delete_exchange_product(999999)
+        self.assertFalse(r["success"])
+        self.assertIn("不存在", r["message"])
+
+    # ==================== DB 连接失败（批量覆盖） ====================
+
+    def test_db_connection_fail(self):
+        """所有需要数据库的方法在连接失败时均返回错误"""
+        from unittest.mock import patch
+        with patch.object(self.lib.db, 'open_database', return_value=False):
+            self.assertFalse(self.lib.create_exchange_product({"name": "x", "points_required": 1})["success"])
+            self.assertFalse(self.lib.get_exchange_item_by_id(1)["success"])
+            # product_exists 内部调用 get_exchange_item_by_id，即使 DB 失败也包装为 success=True
+            exists_result = self.lib.product_exists(1)
+            self.assertTrue(exists_result["success"])
+            self.assertFalse(exists_result["data"]["exists"])
+            self.assertFalse(self.lib.get_exchange_items()["success"])
+            self.assertFalse(self.lib.update_exchange_product(1, {"name": "x"})["success"])
+            self.assertFalse(self.lib.update_product_stock(1, 5)["success"])
+            self.assertFalse(self.lib.get_product_stock(1)["success"])
+            self.assertFalse(self.lib.toggle_product_status(1, 0)["success"])
+            self.assertFalse(self.lib.delete_exchange_product(1)["success"])
+
+    # ==================== 综合业务场景 ====================
+
+    def test_full_lifecycle(self):
+        """完整生命周期：创建 → 查询 → 更新 → 库存 → 上下架 → 删除"""
+        # 创建
+        r = self.lib.create_exchange_product({
+            "name": f"test_product_{uuid.uuid4().hex[:8]}",
+            "points_required": 50,
+            "stock": 100,
+            "status": 1
+        })
+        self.assertTrue(r["success"])
+        pid = r["data"]["product_id"]
+        self.product_ids.append(pid)
+
+        # 查询
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertTrue(detail["success"])
+        self.assertEqual(detail["data"]["stock"], 100)
+
+        # 更新
+        r = self.lib.update_exchange_product(pid, {"name": "已更新", "stock": 50})
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["name"], "已更新")
+        self.assertEqual(detail["data"]["stock"], 50)
+
+        # 库存修改
+        r = self.lib.update_product_stock(pid, 30)
+        self.assertTrue(r["success"])
+        stock = self.lib.get_product_stock(pid)
+        self.assertEqual(stock["data"]["stock"], 30)
+
+        # 下架
+        r = self.lib.toggle_product_status(pid, 0)
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["status"], 0)
+
+        # 上架
+        r = self.lib.toggle_product_status(pid, 1)
+        self.assertTrue(r["success"])
+        detail = self.lib.get_exchange_item_by_id(pid)
+        self.assertEqual(detail["data"]["status"], 1)
+
+        # 删除
+        r = self.lib.delete_exchange_product(pid)
+        self.assertTrue(r["success"])
+        self.product_ids.remove(pid)
+        check = self.lib.get_exchange_item_by_id(pid)
+        self.assertFalse(check["success"])
+
+    def test_create_multiple_and_list(self):
+        """创建多个商品并验证列表"""
+        for i in range(3):
+            self._add_product(name=f"批量商品{i}", status=1)
+        r = self.lib.get_exchange_items(page=1, page_size=20)
+        self.assertTrue(r["success"])
+        names = [item["name"] for item in r["data"]["data"]]
+        for i in range(3):
+            self.assertIn(f"批量商品{i}", names)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

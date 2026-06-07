@@ -8,6 +8,7 @@
 
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
 from backend.libs.exchange_product_library import ExchangeProductLibrary
 
 class ExchangeLibrary:
@@ -25,19 +26,24 @@ class ExchangeLibrary:
         返回当前积分
         """
         try:
+            print(f"检查用户积分, user_id: {user_id}")
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                print("数据库连接失败")
+                return error_response("数据库连接失败")
             user = self.db.get_by_id('t_user', 'user_id', user_id)
             self.db.close_database()
+            print(f"查询到用户: {user}")
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {"points": float(user['points']) if user['points'] is not None else 0}
-            }
+                print("用户不存在")
+                return error_response("用户不存在")
+            points = float(user["points"]) if user["points"] is not None else 0
+            print(f"用户积分: {points}")
+            return success_response("成功", data={"points": points})
         except Exception as e:
-            return {"success": False, "message": f"查询积分失败：{str(e)}", "data": None}
+            print(f"查询积分异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return error_response(f"查询积分失败：{str(e)}")
 
     def submit_exchange(self, user_id: str, product_id: int) -> dict:
         """
@@ -46,15 +52,20 @@ class ExchangeLibrary:
         事务失败自动回滚
         """
         try:
+            print(f"开始提交兑换: user_id={user_id}, product_id={product_id}")
             # 1. 获取商品信息（委托给商品模块）
             product = self.product_lib.get_exchange_item_by_id(product_id)
+            print(f"商品查询结果: {product}")
             if not product["success"]:
                 return product
             product_data = product["data"]
 
             # 2. 检查库存
-            if int(product_data['stock']) <= 0:
-                return {"success": False, "message": "库存不足", "data": None}
+            stock = int(product_data['stock'])
+            print(f"商品库存: {stock}")
+            if stock <= 0:
+                print("库存不足")
+                return error_response("库存不足")
 
             # 3. 检查用户积分
             points_result = self.check_user_points(user_id)
@@ -62,26 +73,36 @@ class ExchangeLibrary:
                 return points_result
             user_points = points_result["data"]["points"]
             points_required = float(product_data['points_required'])
+            print(f"用户积分: {user_points}, 所需积分: {points_required}")
             if user_points < points_required:
-                return {"success": False, "message": "积分不足", "data": None}
+                print("积分不足")
+                return error_response("积分不足")
 
             # 4. 开启事务
+            print("开始开启事务...")
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                print("数据库连接失败")
+                return error_response("数据库连接失败")
             if not self.db.begin_transaction():
                 self.db.close_database()
-                return {"success": False, "message": "事务开启失败", "data": None}
+                return error_response("事务开启失败")
 
             try:
+                print("开始执行扣积分...")
                 # 扣积分
                 new_points = user_points - points_required
+                print(f"新积分: {new_points}")
                 self.db.update_tx('t_user', 'user_id', user_id, {'points': new_points})
+                print("扣积分成功")
 
-                                # 减库存（委托给商品模块的事务内方法）
+                # 减库存（委托给商品模块的事务内方法）
+                print("开始扣库存...")
                 if not self.product_lib._adjust_stock_in_tx(product_id, -1):
                     raise Exception("库存扣减失败")
+                print("扣库存成功")
 
                 # 插入兑换记录
+                print("开始插入兑换记录...")
                 now = datetime.now()
                 exchange_data = {
                     'user_id': user_id,
@@ -91,31 +112,38 @@ class ExchangeLibrary:
                     'created_at': now,
                     'updated_at': now
                 }
+                print(f"兑换数据: {exchange_data}")
                 if not self.db.insert_tx('t_exchange', exchange_data):
                     raise Exception("插入兑换记录失败")
+                print("插入兑换记录成功")
 
                 # 获取自增ID
                 exchange_id = self.db.get_last_insert_id()
+                print(f"兑换ID: {exchange_id}")
                 if not exchange_id:
                     raise Exception("获取兑换ID失败")
 
+                print("提交事务...")
                 self.db.commit()
-                return {
-                    "success": True,
-                    "message": "兑换申请提交成功",
-                    "data": {
+                print("事务提交成功")
+                return success_response(
+                    "兑换申请提交成功",
+                    data={
                         "exchange_id": exchange_id,
                         "points_used": points_required,
                         "created_at": now.strftime("%Y-%m-%d %H:%M:%S")
                     }
-                }
+                )
             except Exception as e:
+                print(f"兑换失败，回滚事务: {e}")
+                import traceback
+                traceback.print_exc()
                 self.db.rollback()
-                return {"success": False, "message": f"兑换失败：{str(e)}", "data": None}
+                return error_response(f"兑换失败：{str(e)}")
             finally:
                 self.db.close_database()
         except Exception as e:
-            return {"success": False, "message": f"兑换处理异常：{str(e)}", "data": None}
+            return error_response(f"兑换处理异常：{str(e)}")
 
     def cancel_exchange(self, exchange_id: int, user_id: str = None) -> dict:
         """
@@ -131,27 +159,27 @@ class ExchangeLibrary:
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             exchange = self.db.get_by_id('t_exchange', 'exchange_id', exchange_id)
             if not exchange:
                 self.db.close_database()
-                return {"success": False, "message": "兑换记录不存在", "data": None}
+                return error_response("兑换记录不存在")
 
             # 检查当前状态（只有待发货 status=0 可以操作）
             if exchange['status'] != 0:
                 self.db.close_database()
-                return {"success": False, "message": "当前状态不允许此操作", "data": None}
+                return error_response("当前状态不允许此操作")
 
             if new_status == 2:
                 # 取消/拒绝：需要检查权限（如果是用户取消，需验证 user_id）
                 if user_id and exchange['user_id'] != user_id:
                     self.db.close_database()
-                    return {"success": False, "message": "无权取消他人兑换", "data": None}
+                    return error_response("无权取消他人兑换")
 
             # 开启事务
             if not self.db.begin_transaction():
                 self.db.close_database()
-                return {"success": False, "message": "事务开启失败", "data": None}
+                return error_response("事务开启失败")
 
             try:
                 now = datetime.now()
@@ -181,18 +209,14 @@ class ExchangeLibrary:
                 # 更新兑换记录状态
                 self.db.update_tx('t_exchange', 'exchange_id', exchange_id, update_data)
                 self.db.commit()
-                return {
-                    "success": True,
-                    "message": "操作成功",
-                    "data": {"exchange_id": exchange_id, "status": new_status}
-                }
+                return success_response("操作成功", data={"exchange_id": exchange_id, "status": new_status})
             except Exception as e:
                 self.db.rollback()
-                return {"success": False, "message": f"操作失败：{str(e)}", "data": None}
+                return error_response(f"操作失败：{str(e)}")
             finally:
                 self.db.close_database()
         except Exception as e:
-            return {"success": False, "message": f"操作异常：{str(e)}", "data": None}
+            return error_response(f"操作异常：{str(e)}")
 
     def complete_exchange(self, exchange_id: int):
         """
@@ -215,7 +239,7 @@ class ExchangeLibrary:
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             offset = (page - 1) * page_size
             sql = """
                 SELECT e.*, p.name AS product_name, p.image_url AS product_image
@@ -230,19 +254,31 @@ class ExchangeLibrary:
             count_result = self.db.execute_raw_sql(count_sql, (user_id,))
             total = count_result[0]['total'] if count_result else 0
             self.db.close_database()
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {
-                    "records": records if records else [],
-                    "total": total,
-                    "page": page,
-                    "page_size": page_size,
-                    "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
-                }
-            }
+            
+            # 转换数据格式匹配前端
+            status_map = {0: 'pending', 1: 'completed', 2: 'cancelled'}
+            status_text_map = {0: '待发货', 1: '已完成', 2: '已取消'}
+            
+            formatted_records = []
+            for r in records or []:
+                created_at = r.get('created_at')
+                if hasattr(created_at, 'strftime'):
+                    exchange_time = created_at.strftime("%Y-%m-%d %H:%M")
+                else:
+                    exchange_time = str(created_at)[:16]
+                
+                formatted_records.append({
+                    'id': r.get('exchange_id'),
+                    'productName': r.get('product_name', ''),
+                    'exchangeTime': exchange_time,
+                    'points': int(r.get('points_used', 0)),
+                    'status': status_map.get(r.get('status', 0), 'pending'),
+                    'statusText': status_text_map.get(r.get('status', 0), '待发货')
+                })
+            
+            return success_response("成功", data=formatted_records)
         except Exception as e:
-            return {"success": False, "message": f"查询兑换记录失败：{str(e)}", "data": None}
+            return error_response(f"查询兑换记录失败：{str(e)}")
 
     def get_all_exchanges(self, page=1, page_size=20) -> dict:
         """
@@ -250,7 +286,7 @@ class ExchangeLibrary:
         """
         try:
             if not self.db.open_database():
-                return {"success": False, "message": "数据库连接失败", "data": None}
+                return error_response("数据库连接失败")
             offset = (page - 1) * page_size
             sql = """
                 SELECT e.*, u.nickname AS user_nickname, p.name AS product_name, p.image_url AS product_image
@@ -265,18 +301,17 @@ class ExchangeLibrary:
             count_result = self.db.execute_raw_sql(count_sql)
             total = count_result[0]['total'] if count_result else 0
             self.db.close_database()
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {
+            return success_response(
+                "成功",
+                data={
                     "records": records if records else [],
                     "total": total,
                     "page": page,
                     "page_size": page_size,
                     "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询所有兑换记录失败：{str(e)}", "data": None}
+            return error_response(f"查询所有兑换记录失败：{str(e)}")
 
     

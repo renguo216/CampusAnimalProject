@@ -8,25 +8,20 @@
     <text class="banner-desc">每一份善款都将用于流浪动物的救助与护理</text>
     <view class="total-info">
       <text class="total-label">累计捐款</text>
-      <text class="total-amount">¥ 12,860.00</text>
+      <text class="total-amount">¥ {{totalAmount}}</text>
     </view>
   </view>
 
   <view class="section">
     <text class="section-title">捐款项目</text>
     <view class="project-list">
-      <view class="project-card" wx:for="{{projects}}" wx:key="id" bindtap="selectProject" data-id="{{item.id}}">
+      <view class="project-card {{selectedProject === item.id ? 'active' : ''}}" wx:for="{{projects}}" wx:key="id" bindtap="selectProject" data-id="{{item.id}}">
         <view class="project-icon">{{item.icon}}</view>
         <view class="project-info">
           <text class="project-name">{{item.name}}</text>
           <text class="project-desc">{{item.description}}</text>
         </view>
-        <view class="project-progress">
-          <view class="progress-bar">
-            <view class="progress-fill" style="width: {{item.progress}}%"></view>
-          </view>
-          <text class="progress-text">{{item.progress}}%</text>
-        </view>
+        <view class="project-check" wx:if="{{selectedProject === item.id}}">✓</view>
       </view>
     </view>
   </view>
@@ -34,7 +29,7 @@
   <view class="section">
     <text class="section-title">捐款金额</text>
     <view class="amount-options">
-      <view class="amount-btn" wx:for="{{amounts}}" wx:key="value" bindtap="selectAmount" data-value="{{item.value}}">
+      <view class="amount-btn {{selectedAmount === item.value ? 'active' : ''}}" wx:for="{{amounts}}" wx:key="value" bindtap="selectAmount" data-value="{{item.value}}">
         <text>¥{{item.value}}</text>
       </view>
     </view>

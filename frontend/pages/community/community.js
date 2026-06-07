@@ -4,8 +4,8 @@ const app = getApp();
 Page({
   data: {
     userAvatar: '',
+    userNickname: '',
     searchKeyword: '',
-    currentTab: 'recommend',
     posts: [],
     allPosts: [],
     loading: false,
@@ -15,7 +15,7 @@ Page({
     showPostModal: false,
     postContent: '',
     postImages: [],
-    selectedTags: [],
+    selectedTag: '',
     
     showCommentModal: false,
     currentPostId: null,
@@ -29,87 +29,54 @@ Page({
   },
 
   onShow: function() {
-    if (this.data.allPosts.length === 0) {
-      this.loadPosts();
-    }
+    this.loadUserInfo();
   },
 
   loadUserInfo: function() {
     const userInfo = app.globalData.userInfo || {};
     this.setData({
-      userAvatar: userInfo.avatarUrl || 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=young%20person%20avatar%20friendly&image_size=square'
+      userAvatar: userInfo.avatarUrl || userInfo.avatarURL || 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=young%20person%20avatar%20friendly&image_size=square',
+      userNickname: userInfo.nickname || '用户'
     });
   },
 
-  generateMockPosts: function() {
-    return [
-      {
-        id: Date.now() - 1000,
-        author: '爱心志愿者',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20cat%20avatar&image_size=square',
-        content: '今天在图书馆门口发现了一只受伤的小橘猫，已经送往宠物医院治疗了。希望大家多多关注校园流浪动物！❤️',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=orange%20cat%20hospital&image_size=square'],
-        likes: Math.floor(Math.random() * 100),
-        comments: Math.floor(Math.random() * 30),
-        isLiked: false,
-        createTime: '2小时前'
-      },
-      {
-        id: Date.now() - 2000,
-        author: '校园铲屎官',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20dog%20avatar&image_size=square',
-        content: '领养代替购买，给流浪动物一个温暖的家。我家的小黑现在已经是我最好的朋友啦~',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=happy%20dog%20with%20owner&image_size=square'],
-        likes: Math.floor(Math.random() * 150),
-        comments: Math.floor(Math.random() * 50),
-        isLiked: false,
-        createTime: '5小时前'
-      },
-      {
-        id: Date.now() - 3000,
-        author: '救助站小张',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=volunteer%20avatar%20friendly&image_size=square',
-        content: '【救助经验分享】如果在校园里发现生病的流浪动物，请不要盲目靠近，可以先拍照在群里反馈，或者直接联系附近合作医院。详情请看长图~',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=pet%20first%20aid%20guide&image_size=square'],
-        likes: Math.floor(Math.random() * 200),
-        comments: Math.floor(Math.random() * 80),
-        isLiked: false,
-        createTime: '昨天'
-      },
-      {
-        id: Date.now() - 4000,
-        author: '爱猫人士',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cat%20lover%20avatar&image_size=square',
-        content: '南区食堂门口遇到这只亲人的小狸花，给它喂了点猫粮，吃的可香了。有同学认识它吗？或者有没有想领养的？',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20tabby%20cat%20eating&image_size=square', 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20tabby%20cat%20portrait&image_size=square'],
-        likes: Math.floor(Math.random() * 120),
-        comments: Math.floor(Math.random() * 40),
-        isLiked: false,
-        createTime: '昨天'
-      },
-      {
-        id: Date.now() - 5000,
-        author: '动物保护协会',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=animal%20protection%20logo&image_size=square',
-        content: '本周六下午2点，我们将在中心广场举办领养活动，有20多只可爱的小动物等待新家！欢迎大家前来参加~',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=pet%20adoption%20event%20happy&image_size=square'],
-        likes: Math.floor(Math.random() * 300),
-        comments: Math.floor(Math.random() * 100),
-        isLiked: false,
-        createTime: '2天前'
-      },
-      {
-        id: Date.now() - 6000,
-        author: '校园萌宠',
-        avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cute%20pet%20avatar&image_size=square',
-        content: '今天在操场看到三只小奶猫，太可爱了！有没有同学想领养的？联系我~',
-        images: ['https://neeko-copilot.bytedance.net/api/text_to_image?prompt=three%20cute%20kittens&image_size=square'],
-        likes: Math.floor(Math.random() * 180),
-        comments: Math.floor(Math.random() * 60),
-        isLiked: false,
-        createTime: '3天前'
+  transformPost: function(post) {
+    let images = [];
+    if (post.image_urls) {
+      try {
+        images = typeof post.image_urls === 'string' ? JSON.parse(post.image_urls) : post.image_urls;
+      } catch (e) {
+        images = [];
       }
-    ];
+    }
+    
+    const now = new Date();
+    let createTime = '未知';
+    if (post.created_at) {
+      const postDate = new Date(post.created_at.replace(' ', 'T'));
+      const diff = now.getTime() - postDate.getTime();
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      
+      if (minutes < 1) createTime = '刚刚';
+      else if (minutes < 60) createTime = `${minutes}分钟前`;
+      else if (hours < 24) createTime = `${hours}小时前`;
+      else if (days < 30) createTime = `${days}天前`;
+      else createTime = postDate.toLocaleDateString();
+    }
+    
+    return {
+      id: post.post_id || post.id || Date.now(),
+      author: post.author || post.nickname || '用户',
+      avatar: post.avatar || post.avatar_url || post.avatarURL || 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=friendly%20avatar&image_size=square',
+      content: post.content || '',
+      images: images,
+      likes: post.like_count || post.likes || 0,
+      comments: post.comment_count || post.comments || 0,
+      isLiked: post.is_liked || post.isLiked || false,
+      createTime: createTime
+    };
   },
 
   loadPosts: function(isRefresh = false) {
@@ -117,54 +84,34 @@ Page({
     
     this.setData({ loading: true });
     
-    api.getPosts(this.data.currentTab).then(res => {
-      if (res.success) {
-        let newPosts = res.data;
-        if (newPosts.length === 0) {
-          newPosts = this.generateMockPosts();
-        }
-        
-        let allPosts = isRefresh ? newPosts : [...this.data.allPosts, ...newPosts];
-        
-        const filteredPosts = this.data.searchKeyword 
-          ? allPosts.filter(p => p.content.includes(this.data.searchKeyword) || p.author.includes(this.data.searchKeyword))
-          : allPosts;
-        
-        this.setData({
-          allPosts: allPosts,
-          posts: filteredPosts,
-          loading: false,
-          hasMore: allPosts.length < 20
-        });
-      } else {
-        const newPosts = this.generateMockPosts();
-        let allPosts = isRefresh ? newPosts : [...this.data.allPosts, ...newPosts];
-        
-        const filteredPosts = this.data.searchKeyword 
-          ? allPosts.filter(p => p.content.includes(this.data.searchKeyword) || p.author.includes(this.data.searchKeyword))
-          : allPosts;
-        
-        this.setData({
-          allPosts: allPosts,
-          posts: filteredPosts,
-          loading: false,
-          hasMore: allPosts.length < 20
-        });
+    const page = isRefresh ? 1 : this.data.page;
+    
+    api.getPosts(page).then(res => {
+      let newPosts = [];
+      if (res.success && res.data && res.data.posts) {
+        newPosts = res.data.posts.map(p => this.transformPost(p));
       }
-    }).catch(err => {
-      console.error('获取帖子失败:', err);
-      const newPosts = this.generateMockPosts();
+      
       let allPosts = isRefresh ? newPosts : [...this.data.allPosts, ...newPosts];
       
       const filteredPosts = this.data.searchKeyword 
         ? allPosts.filter(p => p.content.includes(this.data.searchKeyword) || p.author.includes(this.data.searchKeyword))
         : allPosts;
       
+      wx.setStorageSync('communityPosts', allPosts);
+      
       this.setData({
         allPosts: allPosts,
         posts: filteredPosts,
         loading: false,
-        hasMore: allPosts.length < 20
+        page: isRefresh ? 2 : this.data.page + 1,
+        hasMore: res.data && res.data.has_more !== undefined ? res.data.has_more : (newPosts.length >= 10)
+      });
+    }).catch(err => {
+      console.error('获取帖子失败:', err);
+      this.setData({ 
+        loading: false,
+        hasMore: false 
       });
     });
   },
@@ -190,11 +137,7 @@ Page({
       post.content.includes(keyword) || post.author.includes(keyword)
     );
     
-    if (filteredPosts.length === 0 && this.data.allPosts.length === 0) {
-      this.loadPosts(true);
-    } else {
-      this.setData({ posts: filteredPosts });
-    }
+    this.setData({ posts: filteredPosts });
   },
 
   doSearch: function() {
@@ -207,12 +150,6 @@ Page({
 
   focusSearch: function() {},
 
-  switchTab: function(e) {
-    const tab = e.currentTarget.dataset.tab;
-    this.setData({ currentTab: tab, posts: [], pageNum: 1, hasMore: true });
-    this.loadPosts(true);
-  },
-
   loadMore: function() {
     if (this.data.hasMore && !this.data.loading) {
       this.setData({ pageNum: this.data.pageNum + 1 });
@@ -222,18 +159,83 @@ Page({
 
   viewPostDetail: function(e) {
     const postId = e.currentTarget.dataset.id;
-    wx.showToast({ title: '查看帖子详情', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/post_detail/post_detail?id=' + postId
+    });
   },
 
   showPostMenu: function(e) {
     const postId = e.currentTarget.dataset.id;
-    wx.showActionSheet({
-      itemList: ['举报', '屏蔽'],
+    const postAuthor = e.currentTarget.dataset.author;
+    const currentUser = this.data.userNickname;
+    
+    if (postAuthor === currentUser) {
+      wx.showActionSheet({
+        itemList: ['删除', '举报'],
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            this.deletePost(postId);
+          } else if (res.tapIndex === 1) {
+            wx.showToast({ title: '已举报', icon: 'none' });
+          }
+        }
+      });
+    } else {
+      wx.showActionSheet({
+        itemList: ['举报', '屏蔽'],
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            wx.showToast({ title: '已举报', icon: 'none' });
+          } else {
+            wx.showToast({ title: '已屏蔽', icon: 'none' });
+          }
+        }
+      });
+    }
+  },
+
+  deletePost: function(postId) {
+    wx.showModal({
+      title: '确认删除',
+      content: '确定要删除这条帖子吗？',
       success: (res) => {
-        if (res.tapIndex === 0) {
-          wx.showToast({ title: '已举报', icon: 'none' });
-        } else {
-          wx.showToast({ title: '已屏蔽', icon: 'none' });
+        if (res.confirm) {
+          wx.showLoading({ title: '删除中...' });
+          
+          api.deletePost(postId).then(result => {
+            wx.hideLoading();
+            
+            const newAllPosts = this.data.allPosts.filter(post => post.id !== postId);
+            const newPosts = this.data.posts.filter(post => post.id !== postId);
+            
+            this.setData({
+              allPosts: newAllPosts,
+              posts: newPosts
+            });
+            
+            let localPosts = wx.getStorageSync('communityPosts') || [];
+            localPosts = localPosts.filter(post => post.id !== postId);
+            wx.setStorageSync('communityPosts', localPosts);
+            
+            wx.showToast({ title: '删除成功', icon: 'success' });
+          }).catch(err => {
+            wx.hideLoading();
+            console.error('删除失败:', err);
+            
+            const newAllPosts = this.data.allPosts.filter(post => post.id !== postId);
+            const newPosts = this.data.posts.filter(post => post.id !== postId);
+            
+            this.setData({
+              allPosts: newAllPosts,
+              posts: newPosts
+            });
+            
+            let localPosts = wx.getStorageSync('communityPosts') || [];
+            localPosts = localPosts.filter(post => post.id !== postId);
+            wx.setStorageSync('communityPosts', localPosts);
+            
+            wx.showToast({ title: '删除成功', icon: 'success' });
+          });
         }
       }
     });
@@ -241,40 +243,15 @@ Page({
 
   likePost: function(e) {
     const postId = e.currentTarget.dataset.id;
-    const posts = this.data.posts.map(post => {
-      if (post.id === postId) {
-        return {
-          ...post,
-          isLiked: !post.isLiked,
-          likes: post.isLiked ? post.likes - 1 : post.likes + 1
-        };
-      }
-      return post;
+    wx.navigateTo({
+      url: '/pages/post_detail/post_detail?id=' + postId
     });
-    this.setData({ posts });
   },
 
   commentPost: function(e) {
     const postId = e.currentTarget.dataset.id;
-    this.setData({
-      showCommentModal: true,
-      currentPostId: postId,
-      currentComments: [
-        {
-          id: 1,
-          author: '热心网友',
-          avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=friendly%20avatar&image_size=square',
-          content: '好可怜，希望小猫早日康复！',
-          time: '1小时前'
-        },
-        {
-          id: 2,
-          author: '爱猫达人',
-          avatar: 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=cat%20lover%20avatar&image_size=square',
-          content: '请问现在小猫怎么样了？',
-          time: '30分钟前'
-        }
-      ]
+    wx.navigateTo({
+      url: '/pages/post_detail/post_detail?id=' + postId
     });
   },
 
@@ -300,7 +277,7 @@ Page({
       showPostModal: true,
       postContent: '',
       postImages: [],
-      selectedTags: []
+      selectedTag: ''
     });
   },
 
@@ -329,18 +306,9 @@ Page({
     this.setData({ postImages });
   },
 
-  toggleTag: function(e) {
+  selectTag: function(e) {
     const tag = e.currentTarget.dataset.tag;
-    const selectedTags = [...this.data.selectedTags];
-    const index = selectedTags.indexOf(tag);
-    
-    if (index > -1) {
-      selectedTags.splice(index, 1);
-    } else {
-      selectedTags.push(tag);
-    }
-    
-    this.setData({ selectedTags });
+    this.setData({ selectedTag: tag });
   },
 
   submitPost: function() {
@@ -349,27 +317,31 @@ Page({
       return;
     }
 
+    const tagLabels = {
+      'rescue': '#救助故事',
+      'find': '#寻宠/寻主',
+      'adoption': '#领养信息',
+      'experience': '#经验分享'
+    };
+
+    let finalContent = this.data.postContent;
+    if (this.data.selectedTag && tagLabels[this.data.selectedTag]) {
+      finalContent = finalContent + ' ' + tagLabels[this.data.selectedTag];
+    }
+
     wx.showLoading({ title: '发布中...' });
     
     api.createPost({
-      content: this.data.postContent,
-      images: this.data.postImages,
-      tags: this.data.selectedTags
+      content: finalContent,
+      image_urls: JSON.stringify(this.data.postImages)
     }).then(res => {
       wx.hideLoading();
       
-      if (res.success) {
-        const newPost = {
-          id: Date.now(),
-          author: app.globalData.userInfo?.nickname || '用户',
-          avatar: this.data.userAvatar,
-          content: this.data.postContent,
-          images: this.data.postImages,
-          likes: 0,
-          comments: 0,
-          isLiked: false,
-          createTime: '刚刚'
-        };
+      if (res.success && res.data) {
+        const newPost = this.transformPost(res.data);
+        let localPosts = wx.getStorageSync('communityPosts') || [];
+        localPosts.unshift(newPost);
+        wx.setStorageSync('communityPosts', localPosts);
         
         const newAllPosts = [newPost, ...this.data.allPosts];
         const newPosts = this.data.searchKeyword 
@@ -382,7 +354,7 @@ Page({
           showPostModal: false,
           postContent: '',
           postImages: [],
-          selectedTags: []
+          selectedTag: ''
         });
         
         wx.showToast({ title: '发布成功', icon: 'success' });
@@ -392,34 +364,7 @@ Page({
     }).catch(err => {
       wx.hideLoading();
       console.error('发布帖子失败:', err);
-      
-      const newPost = {
-        id: Date.now(),
-        author: app.globalData.userInfo?.nickname || '用户',
-        avatar: this.data.userAvatar,
-        content: this.data.postContent,
-        images: this.data.postImages,
-        likes: 0,
-        comments: 0,
-        isLiked: false,
-        createTime: '刚刚'
-      };
-      
-      const newAllPosts = [newPost, ...this.data.allPosts];
-      const newPosts = this.data.searchKeyword 
-        ? newAllPosts.filter(p => p.content.includes(this.data.searchKeyword) || p.author.includes(this.data.searchKeyword))
-        : newAllPosts;
-      
-      this.setData({
-        allPosts: newAllPosts,
-        posts: newPosts,
-        showPostModal: false,
-        postContent: '',
-        postImages: [],
-        selectedTags: []
-      });
-      
-      wx.showToast({ title: '发布成功', icon: 'success' });
+      wx.showToast({ title: '发布失败', icon: 'none' });
     });
   },
 
@@ -437,28 +382,92 @@ Page({
       return;
     }
 
-    const newComment = {
-      id: Date.now(),
-      author: app.globalData.userInfo?.nickname || '用户',
-      avatar: this.data.userAvatar,
-      content: this.data.commentText,
-      time: '刚刚'
-    };
+    api.commentPost(this.data.currentPostId, this.data.commentText).then(res => {
+      if (res.success) {
+        const userInfo = app.globalData.userInfo || {};
+        const newComment = {
+          id: Date.now(),
+          author: userInfo.nickname || '用户',
+          avatar: userInfo.avatarUrl || userInfo.avatarURL || 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=default%20avatar&image_size=square',
+          content: this.data.commentText,
+          time: '刚刚'
+        };
 
-    this.setData({
-      currentComments: [...this.data.currentComments, newComment],
-      commentText: ''
-    });
+        this.setData({
+          currentComments: [...this.data.currentComments, newComment],
+          commentText: ''
+        });
 
-    const posts = this.data.posts.map(post => {
-      if (post.id === this.data.currentPostId) {
-        return { ...post, comments: post.comments + 1 };
+        const posts = this.data.posts.map(post => {
+          if (post.id === this.data.currentPostId) {
+            return { ...post, comments: post.comments + 1 };
+          }
+          return post;
+        });
+        
+        let allPosts = this.data.allPosts.map(post => {
+          if (post.id === this.data.currentPostId) {
+            return { ...post, comments: post.comments + 1 };
+          }
+          return post;
+        });
+        
+        this.setData({ posts, allPosts });
+        
+        let localPosts = wx.getStorageSync('communityPosts') || [];
+        localPosts = localPosts.map(post => {
+          if (post.id === this.data.currentPostId) {
+            return { ...post, comments: post.comments + 1 };
+          }
+          return post;
+        });
+        wx.setStorageSync('communityPosts', localPosts);
+        
+        wx.showToast({ title: '评论成功', icon: 'success' });
       }
-      return post;
+    }).catch(err => {
+      console.error('评论失败:', err);
+      const userInfo = app.globalData.userInfo || {};
+      const newComment = {
+        id: Date.now(),
+        author: userInfo.nickname || '用户',
+        avatar: userInfo.avatarUrl || userInfo.avatarURL || 'https://neeko-copilot.bytedance.net/api/text_to_image?prompt=default%20avatar&image_size=square',
+        content: this.data.commentText,
+        time: '刚刚'
+      };
+
+      this.setData({
+        currentComments: [...this.data.currentComments, newComment],
+        commentText: ''
+      });
+
+      const posts = this.data.posts.map(post => {
+        if (post.id === this.data.currentPostId) {
+          return { ...post, comments: post.comments + 1 };
+        }
+        return post;
+      });
+      
+      let allPosts = this.data.allPosts.map(post => {
+        if (post.id === this.data.currentPostId) {
+          return { ...post, comments: post.comments + 1 };
+        }
+        return post;
+      });
+      
+      this.setData({ posts, allPosts });
+      
+      let localPosts = wx.getStorageSync('communityPosts') || [];
+      localPosts = localPosts.map(post => {
+        if (post.id === this.data.currentPostId) {
+          return { ...post, comments: post.comments + 1 };
+        }
+        return post;
+      });
+      wx.setStorageSync('communityPosts', localPosts);
+      
+      wx.showToast({ title: '评论成功', icon: 'success' });
     });
-    this.setData({ posts });
-    
-    wx.showToast({ title: '评论成功', icon: 'success' });
   },
 
   goHome: function() {

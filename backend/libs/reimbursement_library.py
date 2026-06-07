@@ -7,6 +7,7 @@
 
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
 import uuid
 
 
@@ -40,15 +41,15 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 验证用户存在且激活
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("is_active") == 0:
-                return {"success": False, "message": "用户已被封禁，无法提交报销", "data": None}
+                return error_response("用户已被封禁，无法提交报销")
 
             # 2. 生成报销单号
             reimb_id = str(uuid.uuid4()).replace("-", "")[:32]
@@ -67,20 +68,19 @@ class ReimbursementLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.insert("t_reimbursement", data):
-                return {"success": False, "message": "提交报销申请失败", "data": None}
+                return error_response("提交报销申请失败")
 
-            return {
-                "success": True,
-                "message": "报销申请提交成功，等待管理员审核",
-                "data": {
+            return success_response(
+                "报销申请提交成功，等待管理员审核",
+                data={
                     "reimb_id": reimb_id,
                     "amount": float(amount),
                     "status": 0,
                     "created_at": now.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"提交报销申请失败：{str(e)}", "data": None}
+            return error_response(f"提交报销申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -102,19 +102,19 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 查询报销记录
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
 
             # 2. 验证所有权和状态
             if reimbursement.get("user_id") != user_id:
-                return {"success": False, "message": "无权修改他人的报销申请", "data": None}
+                return error_response("无权修改他人的报销申请")
             if reimbursement.get("status") != 0:
-                return {"success": False, "message": "仅待审核的报销可以修改", "data": None}
+                return error_response("仅待审核的报销可以修改")
 
             # 3. 构造需要更新的字段（只允许修改的字段）
             update_data = {"updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -128,15 +128,14 @@ class ReimbursementLibrary:
                 update_data["receipt_urls"] = receipt_urls
 
             if not self.db.update("t_reimbursement", "reimb_id", reimb_id, update_data):
-                return {"success": False, "message": "修改报销申请失败", "data": None}
+                return error_response("修改报销申请失败")
 
-            return {
-                "success": True,
-                "message": "报销申请已修改",
-                "data": {"reimb_id": reimb_id, "updated_at": update_data["updated_at"]}
-            }
+            return success_response(
+                "报销申请已修改",
+                data={"reimb_id": reimb_id, "updated_at": update_data["updated_at"]}
+            )
         except Exception as e:
-            return {"success": False, "message": f"修改报销申请失败：{str(e)}", "data": None}
+            return error_response(f"修改报销申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -152,17 +151,17 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
 
             if reimbursement.get("user_id") != user_id:
-                return {"success": False, "message": "无权撤销他人的报销申请", "data": None}
+                return error_response("无权撤销他人的报销申请")
             if reimbursement.get("status") != 0:
-                return {"success": False, "message": "仅待审核的报销可以撤销", "data": None}
+                return error_response("仅待审核的报销可以撤销")
 
             now = datetime.now()
             update_data = {
@@ -170,15 +169,14 @@ class ReimbursementLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_reimbursement", "reimb_id", reimb_id, update_data):
-                return {"success": False, "message": "撤销报销申请失败", "data": None}
+                return error_response("撤销报销申请失败")
 
-            return {
-                "success": True,
-                "message": "报销申请已撤销",
-                "data": {"reimb_id": reimb_id, "status": 3, "cancelled_at": now.strftime("%Y-%m-%d %H:%M:%S")}
-            }
+            return success_response(
+                "报销申请已撤销",
+                data={"reimb_id": reimb_id, "status": 3, "cancelled_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+            )
         except Exception as e:
-            return {"success": False, "message": f"撤销报销申请失败：{str(e)}", "data": None}
+            return error_response(f"撤销报销申请失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -195,12 +193,12 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
 
             # 关联查询申请人信息
             user = self.db.get_by_id("t_user", "user_id", reimbursement.get("user_id"))
@@ -221,9 +219,9 @@ class ReimbursementLibrary:
                 "created_at": reimbursement.get("created_at").strftime("%Y-%m-%d %H:%M:%S") if reimbursement.get("created_at") else None,
                 "updated_at": reimbursement.get("updated_at").strftime("%Y-%m-%d %H:%M:%S") if reimbursement.get("updated_at") else None
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询报销详情失败：{str(e)}", "data": None}
+            return error_response(f"查询报销详情失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -240,7 +238,7 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": {"reimbursements": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -254,18 +252,19 @@ class ReimbursementLibrary:
 
             if not result or not result.get("data"):
                 data = {"reimbursements": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
-            items = self._format_reimbursements_list(result["data"])
-            data = {
-                "reimbursements": items,
-                "total": result.get("total", 0),
-                "page": page,
-                "page_size": page_size
-            }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response(
+                "成功",
+                data={
+                    "reimbursements": self._format_reimbursements_list(result["data"]),
+                    "total": result.get("total", 0),
+                    "page": page,
+                    "page_size": page_size
+                }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询用户报销记录失败：{str(e)}", "data": None}
+            return error_response(f"查询用户报销记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -284,7 +283,7 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": {...}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             where_clause = None
@@ -304,18 +303,19 @@ class ReimbursementLibrary:
 
             if not result or not result.get("data"):
                 data = {"reimbursements": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
-            items = self._format_reimbursements_list(result["data"])
-            data = {
-                "reimbursements": items,
-                "total": result.get("total", 0),
-                "page": page,
-                "page_size": page_size
-            }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response(
+                "成功",
+                data={
+                    "reimbursements": self._format_reimbursements_list(result["data"]),
+                    "total": result.get("total", 0),
+                    "page": page,
+                    "page_size": page_size
+                }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询所有报销记录失败：{str(e)}", "data": None}
+            return error_response(f"查询所有报销记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -334,14 +334,14 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
             if reimbursement.get("status") != 0:
-                return {"success": False, "message": "仅待审核的报销可以通过", "data": None}
+                return error_response("仅待审核的报销可以通过")
 
             now = datetime.now()
             update_data = {
@@ -354,21 +354,20 @@ class ReimbursementLibrary:
                 update_data["review_comment"] = review_comment
 
             if not self.db.update("t_reimbursement", "reimb_id", reimb_id, update_data):
-                return {"success": False, "message": "审核通过失败", "data": None}
+                return error_response("审核通过失败")
 
-            return {
-                "success": True,
-                "message": "报销审核通过",
-                "data": {
+            return success_response(
+                "报销审核通过",
+                data={
                     "reimb_id": reimb_id,
                     "status": 1,
                     "reviewed_by": admin_id,
                     "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S"),
                     "review_comment": review_comment
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"审核通过失败：{str(e)}", "data": None}
+            return error_response(f"审核通过失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -385,14 +384,14 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
             if reimbursement.get("status") != 0:
-                return {"success": False, "message": "仅待审核的报销可以驳回", "data": None}
+                return error_response("仅待审核的报销可以驳回")
 
             now = datetime.now()
             update_data = {
@@ -403,21 +402,20 @@ class ReimbursementLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_reimbursement", "reimb_id", reimb_id, update_data):
-                return {"success": False, "message": "驳回失败", "data": None}
+                return error_response("驳回失败")
 
-            return {
-                "success": True,
-                "message": "报销申请已驳回",
-                "data": {
+            return success_response(
+                "报销申请已驳回",
+                data={
                     "reimb_id": reimb_id,
                     "status": 2,
                     "reviewed_by": admin_id,
                     "reviewed_at": now.strftime("%Y-%m-%d %H:%M:%S"),
                     "review_comment": reason
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"驳回报销失败：{str(e)}", "data": None}
+            return error_response(f"驳回报销失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -434,25 +432,24 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": {"reimb_id": str, "status": int, "status_text": str}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             reimbursement = self.db.get_by_id("t_reimbursement", "reimb_id", reimb_id)
             if not reimbursement:
-                return {"success": False, "message": "报销记录不存在", "data": None}
+                return error_response("报销记录不存在")
 
             status_map = {0: "待审核", 1: "已通过", 2: "已驳回", 3: "已撤销"}
-            return {
-                "success": True,
-                "message": "成功",
-                "data": {
+            return success_response(
+                "成功",
+                data={
                     "reimb_id": reimbursement.get("reimb_id"),
                     "status": reimbursement.get("status"),
                     "status_text": status_map.get(reimbursement.get("status"), "未知状态")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"查询报销状态失败：{str(e)}", "data": None}
+            return error_response(f"查询报销状态失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -467,7 +464,7 @@ class ReimbursementLibrary:
             dict: {"success": bool, "message": str, "data": dict}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             if status is not None:
@@ -496,9 +493,9 @@ class ReimbursementLibrary:
                     "rejected": count_by_status["2"],
                     "cancelled": count_by_status["3"]
                 }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"统计查询失败：{str(e)}", "data": None}
+            return error_response(f"统计查询失败：{str(e)}")
         finally:
             self.db.close_database()
 

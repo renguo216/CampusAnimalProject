@@ -3,14 +3,19 @@ page {
 }
 
 .container {
-  padding: 0 30rpx 30rpx 30rpx;
+  padding: 200rpx 30rpx 30rpx 30rpx;
   background-color: #FFF8E7;
 }
 
 .header {
   text-align: center;
-  padding-top: 200rpx;
   margin-bottom: 40rpx;
+  padding: 40rpx 0;
+  background-color: #fff;
+  border-radius: 32rpx;
+  margin-left: -30rpx;
+  margin-right: -30rpx;
+  margin-top: -30rpx;
 }
 
 .title {
@@ -34,10 +39,12 @@ page {
 .rescue-card {
   display: flex;
   align-items: center;
-  background-color: transparent;
-  padding: 30rpx 0;
+  background-color: #fff;
+  border-radius: 24rpx;
+  padding: 30rpx;
   margin-bottom: 30rpx;
   width: 100%;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.04);
 }
 
 .pet-avatar {

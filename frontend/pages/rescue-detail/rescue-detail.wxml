@@ -1,0 +1,75 @@
+<view class="detail-container">
+  <view class="header">
+    <view class="header-content">
+      <view class="back-btn" bindtap="goBack">
+        <text>←</text>
+      </view>
+      <text class="header-title">{{headerTitle}}</text>
+    </view>
+  </view>
+  
+  <scroll-view class="scroll-content" scroll-y>
+    <scroll-view class="image-scroll" scroll-x>
+      <view class="image-container">
+        <image 
+          wx:for="{{rescueDetail.images || [rescueDetail.image]}}" 
+          wx:key="index" 
+          src="{{item}}" 
+          mode="aspectFill" 
+          class="detail-image" 
+        />
+      </view>
+    </scroll-view>
+    
+    <view class="detail-info">
+      <view class="info-header">
+        <text class="rescue-title">{{rescueDetail.title}}</text>
+        <view class="status-tag {{getStatusClass(rescueDetail.status)}}">
+          {{getStatusText(rescueDetail.status)}}
+        </view>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">物种:</text>
+        <text class="info-value">{{rescueDetail.specie}}</text>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">需求:</text>
+        <text class="info-value">{{rescueDetail.needs}}</text>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">发现地点:</text>
+        <text class="info-value">{{rescueDetail.location}}</text>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">发现时间:</text>
+        <text class="info-value">{{rescueDetail.foundTime || '未知'}}</text>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">详细描述:</text>
+        <text class="info-value description">{{rescueDetail.description || '暂无描述'}}</text>
+      </view>
+      
+      <view class="info-row">
+        <text class="info-label">发布时间:</text>
+        <text class="info-value">{{rescueDetail.createdAt || '未知'}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="action-section" wx:if="{{rescueDetail.status === 'pending'}}">
+    <view class="action-btn primary" bindtap="handleHelp">
+      <text>我要救助</text>
+    </view>
+  </view>
+
+  <view class="action-section" wx:if="{{rescueDetail.status === 'processing'}}">
+    <view class="action-btn primary" bindtap="handleComplete">
+      <text>救助完成</text>
+    </view>
+  </view>
+</view>

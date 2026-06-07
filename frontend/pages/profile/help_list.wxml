@@ -1,0 +1,45 @@
+<view class="container">
+  <view class="header">
+    <text class="title">我帮助的动物</text>
+  </view>
+
+  <view wx:if="{{!isLoading && helpList.length === 0}}" class="empty-tip">
+    <text>您还没有帮助过动物哦~</text>
+  </view>
+
+  <view class="help-list" wx:else>
+    <view class="help-card"
+          wx:for="{{helpList}}"
+          wx:key="id"
+          bindtap="goToDetail"
+          data-id="{{item.id}}">
+
+      <image class="pet-avatar"
+             src="{{item.photoUrl || '/images/default-pet.png'}}"
+             mode="aspectFill"></image>
+
+      <view class="help-info">
+        <view class="pet-name">
+          {{item.petName || '未知动物'}}
+        </view>
+
+        <view class="help-type">
+          帮助类型：{{item.helpType || '未知'}}
+        </view>
+
+        <view class="help-amount" wx:if="{{item.amount}}">
+          捐助金额：¥{{item.amount}}
+        </view>
+
+        <view class="help-time">
+          帮助时间：{{item.helpTime || '未知'}}
+        </view>
+
+        <view class="help-status">
+          {{item.statusText || '已完成'}}
+        </view>
+      </view>
+
+    </view>
+  </view>
+</view>

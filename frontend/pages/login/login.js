@@ -34,30 +34,75 @@ Page({
                   userInfo: userRes.userInfo
                 });
                 
-                app.globalData.token = loginResult.token;
-                app.globalData.userInfo = {
-                  user_id: loginResult.user.user_id,
-                  nickname: loginResult.user.nickname,
-                  avatarUrl: loginResult.user.avatarURL,
-                  role: loginResult.user.role,
-                  points: loginResult.user.points || 0,
-                  phone_number: loginResult.user.phone_number || ''
-                };
+                console.log('登录API返回结果:', loginResult);
                 
-                // 保存到本地storage
-                wx.setStorageSync('userInfo', app.globalData.userInfo);
-                wx.setStorageSync('token', loginResult.token);
+                // 处理后端返回的数据格式
+                if (loginResult.success) {
+                  // 成功，需要获取完整的用户信息
+                  let userData = loginResult.data;
+                  console.log('登录接口返回的userData:', userData);
+                  
+                  // 如果注册成功只返回了user_id，需要重新获取用户信息
+                  if (userData && !userData.nickname && userData.user_id) {
+                    try {
+                      console.log('需要重新获取用户详情，user_id:', userData.user_id);
+                      const userDetail = await api.getUser(userData.user_id);
+                      console.log('用户详情返回:', userDetail);
+                      if (userDetail.success && userDetail.data) {
+                        userData = userDetail.data;
+                      }
+                    } catch (e) {
+                      console.log('获取用户详情失败:', e);
+                    }
+                  }
+                  
+                  console.log('最终的userData:', userData);
+                  
+                  // 使用后端返回的user_id作为token
+                  const token = userData.user_id;
+                  console.log('使用的token:', token);
+                  
+                  app.globalData.token = token;
+                  app.globalData.userInfo = {
+                    user_id: userData.user_id,
+                    nickname: userData.nickname || userRes.userInfo.nickName,
+                    avatarUrl: userData.avatarURL || userRes.userInfo.avatarUrl,
+                    role: userData.role || 1,
+                    points: userData.points || 0,
+                    phone_number: userData.phone_number || ''
+                  };
+                  
+                  console.log('保存的用户信息:', app.globalData.userInfo);
+                  
+                  // 保存到本地storage
+                  wx.setStorageSync('userInfo', app.globalData.userInfo);
+                  wx.setStorageSync('token', token);
 
-                wx.hideLoading();
-                wx.showToast({ title: '登录成功', icon: 'success' });
-                
-                setTimeout(() => {
-                  wx.reLaunch({ url: '/pages/home/home' });
-                }, 1500);
+                  wx.hideLoading();
+                  wx.showToast({ title: '登录成功', icon: 'success' });
+                  
+                  setTimeout(() => {
+                    wx.reLaunch({ url: '/pages/home/home' });
+                  }, 1500);
+                } else {
+                  // 后端返回失败
+                  wx.hideLoading();
+                  console.error('登录失败:', loginResult.message);
+                  wx.showToast({ 
+                    title: loginResult.message || '登录失败，请重试', 
+                    icon: 'none' 
+                  });
+                }
               } catch (error) {
                 wx.hideLoading();
                 console.error('登录API调用失败:', error);
-                wx.showToast({ title: '网络连接失败，请检查网络', icon: 'none' });
+                let errorMsg = '网络连接失败，请检查网络';
+                if (error && error.message) {
+                  errorMsg = error.message;
+                } else if (typeof error === 'string') {
+                  errorMsg = error;
+                }
+                wx.showToast({ title: errorMsg, icon: 'none' });
               }
             } else {
               wx.hideLoading();

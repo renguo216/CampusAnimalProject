@@ -7,7 +7,12 @@
 
 from datetime import datetime
 from backend.utils.db_manager import DatabaseManager
+from backend.utils.response import success_response, error_response
+from backend.libs.animal_library import AnimalLibrary
 import uuid
+import json
+import requests
+from backend.utils.ai_http_client import detect_species, extract_features
 
 
 class RescueRecordLibrary:
@@ -38,37 +43,37 @@ class RescueRecordLibrary:
         - 生成 record_id，插入 t_rescuerecord 记录（status=0 待接单）
         - 仅普通用户（role=1）或志愿者（role=2）可上报
 
-        Args:
-            user_id: 上报人ID
-            title: 救助标题
-            description: 情况说明
-            location: 发现位置（经纬度或地址）
-            found_location_text: 前端显示的位置文本
-            need_type: 需求类型
-            photo_urls: 救助图片链接（JSON数组）
-            location_lat: 精确纬度
-            location_lng: 精确经度
-            animal_name: 暂时使用的动物名字（未建档前）
-            pet_id: 关联动物ID（可选，如已建档）
-            priority: 优先级：0-普通，1-紧急，2-非常紧急
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             # 1. 验证用户存在且激活
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
-                return {"success": False, "message": "用户不存在", "data": None}
+                return error_response("用户不存在")
             if user.get("is_active") == 0:
-                return {"success": False, "message": "用户已被封禁，无法创建救助记录", "data": None}
+                return error_response("用户已被封禁，无法创建救助记录")
 
             # 2. 生成记录编号
             record_id = str(uuid.uuid4()).replace("-", "")[:32]
             now = datetime.now()
+
+            # 2.5. AI自动识别动物种类填充 animal_name（若未提供且有图片）
+            if not animal_name and photo_urls:
+                try:
+                    photo_list = json.loads(photo_urls)
+                    if isinstance(photo_list, list) and len(photo_list) > 0:
+                        first_photo_url = photo_list[0]
+                        resp = requests.get(first_photo_url, timeout=5)
+                        if resp.status_code == 200:
+                            species_result = detect_species(resp.content)
+                            if species_result.get('success'):
+                                animal_name = species_result.get('breed_name') or species_result.get('category_name')
+                except Exception as e:
+                    print(f"AI识别动物种类失败（不影响创建）：{e}")
+                    # 不抛出异常，继续创建
 
             # 3. 插入救助记录
             data = {
@@ -90,19 +95,18 @@ class RescueRecordLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.insert("t_rescuerecord", data):
-                return {"success": False, "message": "创建救助记录失败", "data": None}
+                return error_response("创建救助记录失败")
 
-            return {
-                "success": True,
-                "message": "救助记录创建成功，等待志愿者接单",
-                "data": {
+            return success_response(
+                "救助记录创建成功，等待志愿者接单",
+                data={
                     "record_id": record_id,
                     "status": 0,
                     "created_at": now.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"创建救助记录失败：{str(e)}", "data": None}
+            return error_response(f"创建救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -120,40 +124,25 @@ class RescueRecordLibrary:
         修改救助记录内容（仅允许上报人或接单志愿者在终态前修改）
         - 终态：已完成（status=3）或已关闭（status=4）
 
-        Args:
-            record_id: 记录编号
-            user_id: 操作者ID
-            title: 新标题（可选）
-            description: 新情况说明（可选）
-            location: 新位置（可选）
-            found_location_text: 新位置文本（可选）
-            need_type: 新需求类型（可选）
-            photo_urls: 新图片链接（可选）
-            location_lat: 新纬度（可选）
-            location_lng: 新经度（可选）
-            animal_name: 新动物名字（可选）
-            priority: 新优先级（可选）
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             record = self.db.get_by_id("t_rescuerecord", "record_id", record_id)
             if not record:
-                return {"success": False, "message": "救助记录不存在", "data": None}
+                return error_response("救助记录不存在")
 
             # 验证权限：上报人或接单志愿者
             if record.get("user_id") != user_id and record.get("helper_id") != user_id:
                 user = self.db.get_by_id("t_user", "user_id", user_id)
                 if not user or user.get("role") != 3:
-                    return {"success": False, "message": "无权修改此救助记录", "data": None}
+                    return error_response("无权修改此救助记录")
 
             # 验证状态：非终态
             if record.get("status") in (3, 4):
-                return {"success": False, "message": "已完成或已关闭的救助记录无法修改", "data": None}
+                return error_response("已完成或已关闭的救助记录无法修改")
 
             # 构造更新字段
             update_data = {"updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -179,15 +168,14 @@ class RescueRecordLibrary:
                 update_data["priority"] = priority
 
             if not self.db.update("t_rescuerecord", "record_id", record_id, update_data):
-                return {"success": False, "message": "修改救助记录失败", "data": None}
+                return error_response("修改救助记录失败")
 
-            return {
-                "success": True,
-                "message": "救助记录已修改",
-                "data": {"record_id": record_id, "updated_at": update_data["updated_at"]}
-            }
+            return success_response(
+                "救助记录已修改",
+                data={"record_id": record_id, "updated_at": update_data["updated_at"]}
+            )
         except Exception as e:
-            return {"success": False, "message": f"修改救助记录失败：{str(e)}", "data": None}
+            return error_response(f"修改救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -196,26 +184,21 @@ class RescueRecordLibrary:
         软删除救助记录（仅允许上报人或管理员）
         将 is_deleted 设为 1
 
-        Args:
-            record_id: 记录编号
-            user_id: 操作者ID
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             record = self.db.get_by_id("t_rescuerecord", "record_id", record_id)
             if not record:
-                return {"success": False, "message": "救助记录不存在", "data": None}
+                return error_response("救助记录不存在")
 
             # 验证权限：上报人或管理员
             if record.get("user_id") != user_id:
                 user = self.db.get_by_id("t_user", "user_id", user_id)
                 if not user or user.get("role") != 3:
-                    return {"success": False, "message": "无权删除此救助记录", "data": None}
+                    return error_response("无权删除此救助记录")
 
             now = datetime.now()
             update_data = {
@@ -223,15 +206,14 @@ class RescueRecordLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_rescuerecord", "record_id", record_id, update_data):
-                return {"success": False, "message": "删除救助记录失败", "data": None}
+                return error_response("删除救助记录失败")
 
-            return {
-                "success": True,
-                "message": "救助记录已删除",
-                "data": {"record_id": record_id, "deleted_at": now.strftime("%Y-%m-%d %H:%M:%S")}
-            }
+            return success_response(
+                "救助记录已删除",
+                data={"record_id": record_id, "deleted_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+            )
         except Exception as e:
-            return {"success": False, "message": f"删除救助记录失败：{str(e)}", "data": None}
+            return error_response(f"删除救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -242,19 +224,15 @@ class RescueRecordLibrary:
         根据记录编号查询救助记录详情（含上报人、志愿者、动物信息）
         - 默认不包含已软删除的记录
 
-        Args:
-            record_id: 记录编号
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             record = self.db.get_by_id("t_rescuerecord", "record_id", record_id)
             if not record or record.get("is_deleted") == 1:
-                return {"success": False, "message": "救助记录不存在", "data": None}
+                return error_response("救助记录不存在")
 
             # 关联查询上报人、志愿者、动物信息
             user = self.db.get_by_id("t_user", "user_id", record.get("user_id"))
@@ -289,9 +267,9 @@ class RescueRecordLibrary:
                 "updated_at": record.get("updated_at").strftime("%Y-%m-%d %H:%M:%S") if record.get("updated_at") else None,
                 "completed_at": record.get("completed_at").strftime("%Y-%m-%d %H:%M:%S") if record.get("completed_at") else None
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询救助记录详情失败：{str(e)}", "data": None}
+            return error_response(f"查询救助记录详情失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -299,16 +277,10 @@ class RescueRecordLibrary:
         """
         分页查询指定用户上报的救助记录（按时间倒序，不含软删除）
 
-        Args:
-            user_id: 用户ID
-            page: 页码（从1开始）
-            page_size: 每页条数
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
+        :return: dict {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -322,7 +294,7 @@ class RescueRecordLibrary:
 
             if not result or not result.get("data"):
                 data = {"records": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             items = self._format_records_list(result["data"])
             data = {
@@ -331,9 +303,9 @@ class RescueRecordLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询用户救助记录失败：{str(e)}", "data": None}
+            return error_response(f"查询用户救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -341,16 +313,10 @@ class RescueRecordLibrary:
         """
         分页查询指定志愿者接单的救助记录（按时间倒序，不含软删除）
 
-        Args:
-            helper_id: 志愿者ID
-            page: 页码
-            page_size: 每页条数
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
+        :return: dict {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -364,7 +330,7 @@ class RescueRecordLibrary:
 
             if not result or not result.get("data"):
                 data = {"records": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             items = self._format_records_list(result["data"])
             data = {
@@ -373,9 +339,9 @@ class RescueRecordLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询志愿者救助记录失败：{str(e)}", "data": None}
+            return error_response(f"查询志愿者救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -383,16 +349,10 @@ class RescueRecordLibrary:
         """
         分页查询指定动物的所有救助历史（按时间倒序，不含软删除）
 
-        Args:
-            pet_id: 动物ID
-            page: 页码
-            page_size: 每页条数
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
+        :return: dict {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             result = self.db.get_paginated(
@@ -406,7 +366,7 @@ class RescueRecordLibrary:
 
             if not result or not result.get("data"):
                 data = {"records": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             items = self._format_records_list(result["data"])
             data = {
@@ -415,9 +375,9 @@ class RescueRecordLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询动物救助历史失败：{str(e)}", "data": None}
+            return error_response(f"查询动物救助历史失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -427,16 +387,10 @@ class RescueRecordLibrary:
         管理员查看所有救助记录（分页，按时间倒序，不含软删除）
         可指定状态筛选
 
-        Args:
-            page: 页码
-            page_size: 每页条数
-            status_filter: 状态筛选（0/1/2/3/4，可选）
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
+        :return: dict {"success": bool, "message": str, "data": {"records": list, "total": int, "page": int, "page_size": int}}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             where_clause = "is_deleted = 0"
@@ -456,7 +410,7 @@ class RescueRecordLibrary:
 
             if not result or not result.get("data"):
                 data = {"records": [], "total": 0, "page": page, "page_size": page_size}
-                return {"success": True, "message": "成功", "data": data}
+                return success_response("成功", data=data)
 
             items = self._format_records_list(result["data"])
             data = {
@@ -465,9 +419,9 @@ class RescueRecordLibrary:
                 "page": page,
                 "page_size": page_size
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"查询所有救助记录失败：{str(e)}", "data": None}
+            return error_response(f"查询所有救助记录失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -476,24 +430,15 @@ class RescueRecordLibrary:
     def _validate_status_transition(self, current_status: int, new_status: int) -> bool:
         """
         内部方法：校验状态转移是否合法
-        状态转移规则：
+        简化后的状态转移规则（直接从0→1→3）：
         0-待接单 → 1-救助中（志愿者接单） / 4-已关闭
-        1-救助中 → 2-待确认（标记完成） / 4-已关闭
-        2-待确认 → 3-已完成（确认完成） / 1-救助中（退回继续救助） / 4-已关闭
+        1-救助中 → 3-已完成（直接完成） / 4-已关闭
         3-已完成 → （终态，不可再变化）
         4-已关闭 → （终态，不可再变化）
-
-        Args:
-            current_status: 当前状态
-            new_status: 目标状态
-
-        Returns:
-            bool: 是否合法
         """
         transitions = {
             0: {1, 4},
-            1: {2, 4},
-            2: {1, 3, 4},
+            1: {3, 4},
             3: set(),
             4: set()
         }
@@ -504,42 +449,29 @@ class RescueRecordLibrary:
         """
         更新救助状态（通用方法，含状态转移合法性校验）
 
-        Args:
-            record_id: 记录编号
-            operator_id: 操作者ID
-            new_status: 目标状态
-            helper_id: 接单志愿者ID（仅 status=1 时使用）
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             record = self.db.get_by_id("t_rescuerecord", "record_id", record_id)
             if not record or record.get("is_deleted") == 1:
-                return {"success": False, "message": "救助记录不存在", "data": None}
+                return error_response("救助记录不存在")
 
             current_status = record.get("status")
 
             # 校验状态转移合法性
             if not self._validate_status_transition(current_status, new_status):
                 status_map = {0: "待接单", 1: "救助中", 2: "待确认", 3: "已完成", 4: "已关闭"}
-                return {
-                    "success": False,
-                    "message": f"不允许从「{status_map.get(current_status, '未知')}」变更为「{status_map.get(new_status, '未知')}」",
-                    "data": None
-                }
+                return error_response(
+                    f"不允许从「{status_map.get(current_status, '未知')}」变更为「{status_map.get(new_status, '未知')}」"
+                )
 
             # 校验权限
-            # status=0→1（接单）：操作者必须是志愿者或管理员
-            # status=1→2（标记完成）：操作者必须是上报人或接单志愿者
-            # status=2→3（确认完成）：操作者必须是管理员
-            # status=1/2→4（关闭）：操作者必须是上报人或管理员
             user = self.db.get_by_id("t_user", "user_id", operator_id)
             if not user:
-                return {"success": False, "message": "操作者不存在", "data": None}
+                return error_response("操作者不存在")
 
             is_reporter = (record.get("user_id") == operator_id)
             is_helper = (record.get("helper_id") == operator_id)
@@ -549,27 +481,27 @@ class RescueRecordLibrary:
             # 接单：必须是志愿者或管理员
             if current_status == 0 and new_status == 1:
                 if not (is_volunteer or is_admin):
-                    return {"success": False, "message": "仅志愿者或管理员可以接单", "data": None}
+                    return error_response("仅志愿者或管理员可以接单")
 
             # 标记完成：必须是上报人或接单志愿者
             elif current_status == 1 and new_status == 2:
                 if not (is_reporter or is_helper):
-                    return {"success": False, "message": "仅上报人或接单志愿者可以标记完成", "data": None}
+                    return error_response("仅上报人或接单志愿者可以标记完成")
 
             # 确认完成：必须是管理员
             elif current_status == 2 and new_status == 3:
                 if not is_admin:
-                    return {"success": False, "message": "仅管理员可以确认完成", "data": None}
+                    return error_response("仅管理员可以确认完成")
 
             # 关闭：必须是上报人或管理员
             elif new_status == 4:
                 if not (is_reporter or is_admin):
-                    return {"success": False, "message": "仅上报人或管理员可以关闭救助记录", "data": None}
+                    return error_response("仅上报人或管理员可以关闭救助记录")
 
             # 退回继续救助（2→1）：必须是管理员
             elif current_status == 2 and new_status == 1:
                 if not is_admin:
-                    return {"success": False, "message": "仅管理员可以退回救助记录", "data": None}
+                    return error_response("仅管理员可以退回救助记录")
 
             # 构造更新数据
             now = datetime.now()
@@ -588,19 +520,18 @@ class RescueRecordLibrary:
                 update_data["completed_at"] = now.strftime("%Y-%m-%d %H:%M:%S")
 
             if not self.db.update("t_rescuerecord", "record_id", record_id, update_data):
-                return {"success": False, "message": "更新状态失败", "data": None}
+                return error_response("更新状态失败")
 
-            return {
-                "success": True,
-                "message": "状态更新成功",
-                "data": {
+            return success_response(
+                "状态更新成功",
+                data={
                     "record_id": record_id,
                     "status": new_status,
                     "updated_at": update_data["updated_at"]
                 }
-            }
+            )
         except Exception as e:
-            return {"success": False, "message": f"更新状态失败：{str(e)}", "data": None}
+            return error_response(f"更新状态失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -610,40 +541,25 @@ class RescueRecordLibrary:
         将 status 从 0（待接单）变为 1（救助中）
         并设置 helper_id
 
-        Args:
-            record_id: 记录编号
-            helper_id: 接单志愿者ID
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         return self.update_rescue_status(record_id, helper_id, 1, helper_id=helper_id)
 
     def complete_rescue(self, record_id: str, operator_id: str) -> dict:
         """
-        标记救助完成（待确认）
-        将 status 从 1（救助中）变为 2（待确认）
+        标记救助完成（直接完成）
+        将 status 从 1（救助中）变为 3（已完成）
 
-        Args:
-            record_id: 记录编号
-            operator_id: 操作者ID（上报人或接单志愿者）
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
-        return self.update_rescue_status(record_id, operator_id, 2)
+        return self.update_rescue_status(record_id, operator_id, 3)
 
     def confirm_rescue(self, record_id: str, admin_id: str) -> dict:
         """
         管理员确认救助完成
         将 status 从 2（待确认）变为 3（已完成）
 
-        Args:
-            record_id: 记录编号
-            admin_id: 管理员ID
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         return self.update_rescue_status(record_id, admin_id, 3)
 
@@ -652,39 +568,30 @@ class RescueRecordLibrary:
         关闭救助记录
         将 status 变为 4（已关闭），可从 0/1/2 状态关闭
 
-        Args:
-            record_id: 记录编号
-            operator_id: 操作者ID（上报人或管理员）
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         return self.update_rescue_status(record_id, operator_id, 4)
 
     def link_animal(self, record_id: str, pet_id: int, operator_id: str) -> dict:
         """
         关联动物档案到救助记录（救助完成后建立关联）
+        使用统一后的 AnimalLibrary API
 
-        Args:
-            record_id: 记录编号
-            pet_id: 动物ID
-            operator_id: 操作者ID
-
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict or None}
+        :return: dict {"success": bool, "message": str, "data": dict or None}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             record = self.db.get_by_id("t_rescuerecord", "record_id", record_id)
             if not record or record.get("is_deleted") == 1:
-                return {"success": False, "message": "救助记录不存在", "data": None}
+                return error_response("救助记录不存在")
 
-            # 验证动物存在
-            animal = self.db.get_by_id("t_animal", "pet_id", pet_id)
-            if not animal:
-                return {"success": False, "message": "动物档案不存在", "data": None}
+            # 验证动物存在（使用统一后的 API）
+            animal_lib = AnimalLibrary()
+            animal_result = animal_lib.get_animal_by_id(pet_id)
+            if not animal_result["success"]:
+                return error_response("动物档案不存在")
 
             now = datetime.now()
             update_data = {
@@ -692,15 +599,32 @@ class RescueRecordLibrary:
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S")
             }
             if not self.db.update("t_rescuerecord", "record_id", record_id, update_data):
-                return {"success": False, "message": "关联动物失败", "data": None}
+                return error_response("关联动物失败")
 
-            return {
-                "success": True,
-                "message": "已关联动物档案",
-                "data": {"record_id": record_id, "pet_id": pet_id, "updated_at": update_data["updated_at"]}
-            }
+            # 关联成功后，从救助记录图片中提取特征向量并更新动物档案
+            try:
+                photo_urls_str = record.get("photo_urls")
+                if photo_urls_str:
+                    photo_list = json.loads(photo_urls_str)
+                    if isinstance(photo_list, list) and len(photo_list) > 0:
+                        first_photo_url = photo_list[0]
+                        resp = requests.get(first_photo_url, timeout=5)
+                        if resp.status_code == 200:
+                            features_result = extract_features(resp.content)
+                            if features_result.get('success'):
+                                vector_json = json.dumps(features_result.get('features'))
+                                vector_result = animal_lib.update_animal_vector(pet_id, vector_json)
+                                if not vector_result["success"]:
+                                    print(f"提取特征向量更新动物档案失败：{vector_result['message']}")
+            except Exception as e:
+                print(f"提取特征向量更新动物档案失败（不影响关联）：{e}")
+
+            return success_response(
+                "已关联动物档案",
+                data={"record_id": record_id, "pet_id": pet_id, "updated_at": update_data["updated_at"]}
+            )
         except Exception as e:
-            return {"success": False, "message": f"关联动物失败：{str(e)}", "data": None}
+            return error_response(f"关联动物失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -710,11 +634,10 @@ class RescueRecordLibrary:
         """
         获取各状态救助记录统计（用于管理看板，不含软删除）
 
-        Returns:
-            dict: {"success": bool, "message": str, "data": dict}
+        :return: dict {"success": bool, "message": str, "data": dict}
         """
         if not self.db.open_database():
-            return {"success": False, "message": "数据库连接失败", "data": None}
+            return error_response("数据库连接失败")
 
         try:
             sql = """SELECT status, COUNT(*) AS count
@@ -741,9 +664,9 @@ class RescueRecordLibrary:
                 "completed": count_by_status["3"],     # 已完成
                 "closed": count_by_status["4"]         # 已关闭
             }
-            return {"success": True, "message": "成功", "data": data}
+            return success_response("成功", data=data)
         except Exception as e:
-            return {"success": False, "message": f"统计查询失败：{str(e)}", "data": None}
+            return error_response(f"统计查询失败：{str(e)}")
         finally:
             self.db.close_database()
 
@@ -752,45 +675,57 @@ class RescueRecordLibrary:
     def _format_records_list(self, rows: list) -> list:
         """
         格式化救助记录列表（统一时间字段、关联用户信息）
-
-        Args:
-            rows: 原始数据库行列表
-
-        Returns:
-            list: 格式化后的救助记录列表
         """
         if not rows:
             return []
         formatted = []
         for row in rows:
-            user = self.db.get_by_id("t_user", "user_id", row.get("user_id"))
-            helper = self.db.get_by_id("t_user", "user_id", row.get("helper_id")) if row.get("helper_id") else None
-            animal = self.db.get_by_id("t_animal", "pet_id", row.get("pet_id")) if row.get("pet_id") else None
-            resolver = self.db.get_by_id("t_user", "user_id", row.get("resolved_by")) if row.get("resolved_by") else None
+            try:
+                user = self.db.get_by_id("t_user", "user_id", row.get("user_id"))
+                helper = self.db.get_by_id("t_user", "user_id", row.get("helper_id")) if row.get("helper_id") else None
+                animal = self.db.get_by_id("t_animal", "pet_id", row.get("pet_id")) if row.get("pet_id") else None
+                resolver = self.db.get_by_id("t_user", "user_id", row.get("resolved_by")) if row.get("resolved_by") else None
+                
+                # 处理时间字段，兼容字符串和 datetime 对象
+                def format_time(val):
+                    if val is None:
+                        return None
+                    if hasattr(val, 'strftime'):
+                        return val.strftime("%Y-%m-%d %H:%M:%S")
+                    # 如果是字符串，直接返回
+                    return str(val)
 
-            formatted.append({
-                "record_id": row.get("record_id"),
-                "user_id": row.get("user_id"),
-                "user_nickname": user.get("nickname") if user else None,
-                "user_avatar": user.get("avatarURL") if user else None,
-                "helper_id": row.get("helper_id"),
-                "helper_nickname": helper.get("nickname") if helper else None,
-                "helper_avatar": helper.get("avatarURL") if helper else None,
-                "pet_id": row.get("pet_id"),
-                "pet_name": animal.get("name") if animal else None,
-                "title": row.get("title"),
-                "location": row.get("location"),
-                "found_location_text": row.get("found_location_text"),
-                "description": row.get("description"),
-                "need_type": row.get("need_type"),
-                "photo_urls": row.get("photo_urls"),
-                "priority": row.get("priority"),
-                "animal_name": row.get("animal_name"),
-                "status": row.get("status"),
-                "resolved_by": row.get("resolved_by"),
-                "resolver_nickname": resolver.get("nickname") if resolver else None,
-                "created_at": row.get("created_at").strftime("%Y-%m-%d %H:%M:%S") if row.get("created_at") else None,
-                "updated_at": row.get("updated_at").strftime("%Y-%m-%d %H:%M:%S") if row.get("updated_at") else None,
-                "completed_at": row.get("completed_at").strftime("%Y-%m-%d %H:%M:%S") if row.get("completed_at") else None
-            })
+                formatted.append({
+                    "record_id": row.get("record_id"),
+                    "user_id": row.get("user_id"),
+                    "user_nickname": user.get("nickname") if user else None,
+                    "user_avatar": user.get("avatarURL") if user else None,
+                    "helper_id": row.get("helper_id"),
+                    "helper_nickname": helper.get("nickname") if helper else None,
+                    "helper_avatar": helper.get("avatarURL") if helper else None,
+                    "pet_id": row.get("pet_id"),
+                    "pet_name": animal.get("name") if animal else None,
+                    "title": row.get("title"),
+                    "location": row.get("location"),
+                    "found_location_text": row.get("found_location_text"),
+                    "description": row.get("description"),
+                    "need_type": row.get("need_type"),
+                    "photo_urls": row.get("photo_urls"),
+                    "priority": row.get("priority"),
+                    "animal_name": row.get("animal_name"),
+                    "status": row.get("status"),
+                    "resolved_by": row.get("resolved_by"),
+                    "resolver_nickname": resolver.get("nickname") if resolver else None,
+                    "created_at": format_time(row.get("created_at")),
+                    "updated_at": format_time(row.get("updated_at")),
+                    "completed_at": format_time(row.get("completed_at"))
+                })
+            except Exception as e:
+                print(f"格式化记录出错: {e}")
+                # 至少添加基本信息
+                formatted.append({
+                    "record_id": row.get("record_id"),
+                    "title": row.get("title"),
+                    "status": row.get("status")
+                })
         return formatted

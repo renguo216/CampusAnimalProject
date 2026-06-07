@@ -1,0 +1,46 @@
+<view class="container">
+  <view class="header">
+    <text class="title">我的捐款记录</text>
+  </view>
+
+  <view class="total-section">
+    <text class="total-label">累计捐款</text>
+    <text class="total-amount">¥{{totalAmount}}</text>
+  </view>
+
+  <view wx:if="{{!isLoading && donationList.length === 0}}" class="empty-tip">
+    <text>您还没有捐款记录哦~</text>
+  </view>
+
+  <view class="donation-list" wx:else>
+    <view class="donation-card"
+          wx:for="{{donationList}}"
+          wx:key="id"
+          bindtap="goToProject"
+          data-id="{{item.projectId}}">
+
+      <image class="project-image"
+             src="{{item.projectImage || '/images/default-project.png'}}"
+             mode="aspectFill"></image>
+
+      <view class="donation-info">
+        <view class="project-name">
+          {{item.projectName || '未知项目'}}
+        </view>
+
+        <view class="donation-amount">
+          捐款金额：¥{{item.amount}}
+        </view>
+
+        <view class="donation-time">
+          捐款时间：{{item.donationTime || '未知'}}
+        </view>
+
+        <view class="donation-status">
+          {{item.statusText || '已完成'}}
+        </view>
+      </view>
+
+    </view>
+  </view>
+</view>

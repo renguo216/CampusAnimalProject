@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园动物管理系统 - 管理员后台</title>
+    <link rel="stylesheet" href="/admin/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🐾</span>
+                <span class="logo-text">校园动物管理</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <span class="icon">📊</span>
+                    <span class="text">仪表盘</span>
+                </a>
+                <a href="#" class="nav-item" data-page="users">
+                    <span class="icon">👥</span>
+                    <span class="text">用户管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="animals">
+                    <span class="icon">🐱</span>
+                    <span class="text">动物管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="donations">
+                    <span class="icon">💰</span>
+                    <span class="text">捐款管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="volunteers">
+                    <span class="icon">🙋</span>
+                    <span class="text">志愿者管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="adoptions">
+                    <span class="icon">🏠</span>
+                    <span class="text">领养管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="rescues">
+                    <span class="icon">🚑</span>
+                    <span class="text">救助管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="products">
+                    <span class="icon">🎁</span>
+                    <span class="text">商品管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="posts">
+                    <span class="icon">📝</span>
+                    <span class="text">帖子管理</span>
+                </a>
+            </nav>
+        </aside>
+        
+        <main class="main-content">
+            <header class="header">
+                <h1 class="page-title" id="pageTitle">仪表盘</h1>
+                <div class="header-right">
+                    <span class="admin-info">
+                        <span class="admin-icon">👤</span>
+                        <span id="adminName">管理员</span>
+                    </span>
+                    <button class="btn-logout" id="btnLogout">退出登录</button>
+                </div>
+            </header>
+            
+            <div class="content" id="pageContent">
+            </div>
+        </main>
+    </div>
+    
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">标题</h3>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+            </div>
+            <div class="modal-footer" id="modalFooter">
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+    
+    <script src="/admin/js/api.js"></script>
+    <script src="/admin/js/pages/dashboard.js"></script>
+    <script src="/admin/js/pages/users.js"></script>
+    <script src="/admin/js/pages/animals.js"></script>
+    <script src="/admin/js/pages/donations.js"></script>
+    <script src="/admin/js/pages/volunteers.js"></script>
+    <script src="/admin/js/pages/adoptions.js"></script>
+    <script src="/admin/js/pages/rescues.js"></script>
+    <script src="/admin/js/pages/product.js"></script>
+    <script src="/admin/js/pages/posts.js"></script>
+    <script src="/admin/js/main.js"></script>
+</body>
+</html>

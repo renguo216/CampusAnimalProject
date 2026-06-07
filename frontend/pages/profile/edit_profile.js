@@ -136,11 +136,16 @@ Page({
       wx.hideLoading();
       if (res.success) {
         // 更新globalData和storage
-        app.globalData.userInfo = {
+        const updateUserInfo = {
           ...app.globalData.userInfo,
-          ...updateData
+          user_id: app.globalData.userInfo.user_id,
+          nickname: updateData.nickname,
+          avatarUrl: updateData.avatarURL,
+          avatarURL: updateData.avatarURL,
+          phone_number: updateData.phone_number
         };
-        wx.setStorageSync('userInfo', app.globalData.userInfo);
+        app.globalData.userInfo = updateUserInfo;
+        wx.setStorageSync('userInfo', updateUserInfo);
         
         console.log('更新后的用户信息:', app.globalData.userInfo);
         

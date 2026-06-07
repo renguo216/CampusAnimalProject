@@ -18,3 +18,26 @@ class Animal:
         self.photo_urls = photo_urls    # 照片链接（JSON数组）
         self.found_location = found_location  # 发现地点
         self.created_at = created_at    # 档案创建时间
+
+    def to_dict(self):
+        import json
+        # 确保 photo_urls 是正确的格式 - 如果是字符串且是 JSON 数组，保持原样
+        processed_photo_urls = self.photo_urls
+        
+        return {
+            "pet_id": self.pet_id,
+            "name": self.name,
+            "breed": self.breed,
+            "color": self.color,
+            "vector": self.vector,
+            "status": self.status,
+            "age": self.age,
+            "gender": self.gender,
+            "is_neutered": self.is_neutered,
+            "is_vaccinated": self.is_vaccinated,
+            "personality": self.personality,
+            "description": self.description,
+            "photo_urls": processed_photo_urls,
+            "found_location": self.found_location,
+            "created_at": self.created_at
+        }

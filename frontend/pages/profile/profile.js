@@ -55,15 +55,21 @@ Page({
   },
 
   goToMyReports: function() {
-    wx.showToast({ title: '我上报的救助记录', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/report_list'
+    });
   },
 
   goToMyHelps: function() {
-    wx.showToast({ title: '我参与帮助的救助', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/help_list'
+    });
   },
 
   goToMyAdoptions: function() {
-    wx.showToast({ title: '我的领养记录', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/adoption_list'
+    });
   },
 
   goToVolunteerApply: function() {
@@ -73,7 +79,9 @@ Page({
   },
 
   goToDonationHistory: function() {
-    wx.showToast({ title: '我的捐款记录', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/donation_history'
+    });
   },
 
   goToPoints: function() {
@@ -83,15 +91,21 @@ Page({
   },
 
   goToHelpFeedback: function() {
-    wx.showToast({ title: '帮助与反馈', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/help_feedback'
+    });
   },
 
   goToPlatformRules: function() {
-    wx.showToast({ title: '平台规则', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/platform_rules'
+    });
   },
 
   goToSettings: function() {
-    wx.showToast({ title: '设置', icon: 'none' });
+    wx.navigateTo({
+      url: '/pages/profile/settings'
+    });
   },
 
   logout: function() {

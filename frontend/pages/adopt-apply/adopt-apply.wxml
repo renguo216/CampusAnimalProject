@@ -1,0 +1,65 @@
+<view class="page">
+  <view class="hero">
+    <text class="hero-title">📝 领养申请</text>
+    <text class="hero-sub">申请领养 {{petName}}</text>
+  </view>
+
+  <view class="form-card">
+    <view class="form-item">
+      <text class="form-label">申请人姓名 <text class="required">*</text></text>
+      <input class="form-input" placeholder="请输入您的姓名" maxlength="20" bindinput="onInput" data-field="name" value="{{form.name}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">联系电话 <text class="required">*</text></text>
+      <input class="form-input" type="number" placeholder="请输入手机号码" maxlength="11" bindinput="onInput" data-field="phone" value="{{form.phone}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">居住地址 <text class="required">*</text></text>
+      <input class="form-input" placeholder="请输入详细居住地址" bindinput="onInput" data-field="address" value="{{form.address}}" />
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">养宠经验</text>
+      <view class="radio-group">
+        <view class="radio-item {{form.experience === 1 ? 'active' : ''}}" bindtap="selectOption" data-field="experience" data-value="1">
+          <text>有经验</text>
+        </view>
+        <view class="radio-item {{form.experience === 2 ? 'active' : ''}}" bindtap="selectOption" data-field="experience" data-value="2">
+          <text>无经验</text>
+        </view>
+        <view class="radio-item {{form.experience === 0 ? 'active' : ''}}" bindtap="selectOption" data-field="experience" data-value="0">
+          <text>保密</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">是否有其他宠物</text>
+      <view class="radio-group">
+        <view class="radio-item {{form.hasOtherPets === 1 ? 'active' : ''}}" bindtap="selectOption" data-field="hasOtherPets" data-value="1">
+          <text>是</text>
+        </view>
+        <view class="radio-item {{form.hasOtherPets === 2 ? 'active' : ''}}" bindtap="selectOption" data-field="hasOtherPets" data-value="2">
+          <text>否</text>
+        </view>
+        <view class="radio-item {{form.hasOtherPets === 0 ? 'active' : ''}}" bindtap="selectOption" data-field="hasOtherPets" data-value="0">
+          <text>保密</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-item">
+      <text class="form-label">领养原因 <text class="required">*</text></text>
+      <textarea class="form-textarea" placeholder="请说明您想领养这只宠物的原因..." maxlength="500" bindinput="onInput" data-field="reason" value="{{form.reason}}" />
+    </view>
+
+    <button class="submit-btn" bindtap="submit" loading="{{submitting}}">提交申请</button>
+
+    <view class="tips">
+      <text class="tips-title">温馨提示</text>
+      <text class="tips-content">提交申请后，管理人员将在3个工作日内审核，请保持手机畅通。</text>
+    </view>
+  </view>
+</view>

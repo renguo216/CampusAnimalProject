@@ -1,0 +1,50 @@
+<view class="container">
+  <view class="header">
+    <text class="title">设置</text>
+  </view>
+
+  <view class="section">
+    <view class="section-title">通用设置</view>
+    <view class="settings-list">
+      <view class="setting-item">
+        <text class="setting-label">接收通知</text>
+        <switch checked="{{notificationEnabled}}" bindchange="toggleNotification" color="#4caf50" />
+      </view>
+      <view class="setting-item">
+        <text class="setting-label">位置权限</text>
+        <switch checked="{{locationEnabled}}" bindchange="toggleLocation" color="#4caf50" />
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">清理与更新</view>
+    <view class="settings-list">
+      <view class="setting-item" bindtap="clearCache">
+        <text class="setting-label">清除缓存</text>
+        <text class="setting-arrow">›</text>
+      </view>
+      <view class="setting-item" bindtap="checkUpdate">
+        <text class="setting-label">检查更新</text>
+        <view class="setting-value">
+          <text class="version">v{{version}}</text>
+          <text class="setting-arrow">›</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">其他</view>
+    <view class="settings-list">
+      <view class="setting-item" bindtap="aboutUs">
+        <text class="setting-label">关于我们</text>
+        <text class="setting-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="logout-section">
+    <button class="logout-btn" bindtap="logout">退出登录</button>
+  </view>
+</view>

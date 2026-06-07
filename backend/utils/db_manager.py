@@ -1,6 +1,6 @@
 import pymysql
 from pymysql.cursors import DictCursor
-from pymysql.converters import conversions
+from pymysql.converters import conversions, convert_datetime
 import os
 from dotenv import load_dotenv
 
@@ -27,13 +27,30 @@ class DatabaseManager:
     def open_database(self):
         """
         建立数据库连接（对应文档的 openDatabase）
+        如果已有活跃连接则直接复用，避免重复创建
         """
+        # 已有连接且可用，直接复用
+        if self.connection is not None:
+            try:
+                self.connection.ping(reconnect=True)
+                return True
+            except Exception:
+                # 连接已失效，关闭后重新创建
+                try:
+                    self.connection.close()
+                except Exception:
+                    pass
+                self.connection = None
+
         try:
             # 复制默认转换器，将 DECIMAL / NEWDECIMAL 自动转为 float，
             # 避免上层业务代码出现 decimal.Decimal + float 的 TypeError
             conv = conversions.copy()
             conv[pymysql.FIELD_TYPE.DECIMAL] = float
             conv[pymysql.FIELD_TYPE.NEWDECIMAL] = float
+            # 添加 datetime 转换器，确保返回的是 Python datetime 对象
+            conv[pymysql.FIELD_TYPE.DATETIME] = convert_datetime
+            conv[pymysql.FIELD_TYPE.TIMESTAMP] = convert_datetime
 
             self.connection = pymysql.connect(
                 host=self.host,
@@ -109,20 +126,17 @@ class DatabaseManager:
             with self.connection.cursor() as cursor:
                 set_clause = ', '.join([f"{key} = %s" for key in data_dict.keys()])
                 sql = f"UPDATE {table_name} SET {set_clause} WHERE {id_key} = %s"
-                values = list(data_dict.values()) + [str(id_value)]
+                # 不转换为字符串，保持原始类型
+                values = list(data_dict.values()) + [id_value]
                 cursor.execute(sql, values)
                 self.connection.commit()
                 
-                # 验证：查询该记录是否存在（替代 rowcount，兼容 varchar 主键）
-                verify_sql = f"SELECT 1 FROM {table_name} WHERE {id_key} = %s"
-                cursor.execute(verify_sql, (str(id_value),))
-                exists = cursor.fetchone() is not None
-                
-                if exists:
+                # 检查受影响的行数
+                if cursor.rowcount > 0:
                     print(f"✅ 成功更新 {table_name} 中 id={id_value} 的记录")
                     return True
                 else:
-                    print(f"⚠️ 未找到 id={id_value} 的记录，更新失败")
+                    print(f"⚠️ 未找到 id={id_value} 的记录或无更新，更新失败")
                     return False
         except Exception as e:
             print(f"❌ 更新失败: {e}")
