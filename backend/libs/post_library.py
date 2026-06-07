@@ -172,8 +172,11 @@ class PostLibrary:
             count_result = self.db.execute_raw_sql(count_sql, (user_id,))
             total = count_result[0]["total"] if count_result else 0
 
+<<<<<<< HEAD
             has_more = (page * page_size) < total
             
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             self.db.close_database()
             return success_response(
                 "成功",
@@ -181,8 +184,12 @@ class PostLibrary:
                     "posts": self._format_posts_list(posts),
                     "total": total,
                     "page": page,
+<<<<<<< HEAD
                     "page_size": page_size,
                     "has_more": has_more
+=======
+                    "page_size": page_size
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 }
             )
         except Exception as e:
@@ -210,8 +217,11 @@ class PostLibrary:
             count_result = self.db.execute_raw_sql(count_sql)
             total = count_result[0]["total"] if count_result else 0
 
+<<<<<<< HEAD
             has_more = (page * page_size) < total
             
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             self.db.close_database()
             return success_response(
                 "成功",
@@ -219,8 +229,12 @@ class PostLibrary:
                     "posts": self._format_posts_list(posts),
                     "total": total,
                     "page": page,
+<<<<<<< HEAD
                     "page_size": page_size,
                     "has_more": has_more
+=======
+                    "page_size": page_size
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 }
             )
         except Exception as e:

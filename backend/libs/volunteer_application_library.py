@@ -50,7 +50,10 @@ class VolunteerApplicationLibrary:
             # 1. 验证用户存在且激活
             user = self.db.get_by_id("t_user", "user_id", user_id)
             if not user:
+<<<<<<< HEAD
                 print(f"用户不存在: {user_id}")
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return error_response("用户不存在")
             if user.get("is_active") == 0:
                 return error_response("用户已被封禁，无法申请")
@@ -89,9 +92,12 @@ class VolunteerApplicationLibrary:
                 }
             }
         except Exception as e:
+<<<<<<< HEAD
             print(f"提交申请异常: {str(e)}")
             import traceback
             traceback.print_exc()
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             return error_response(f"提交申请失败：{str(e)}")
         finally:
             self.db.close_database()

@@ -28,12 +28,16 @@ class ExchangeLibrary:
         try:
             print(f"检查用户积分, user_id: {user_id}")
             if not self.db.open_database():
+<<<<<<< HEAD
                 print("数据库连接失败")
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return error_response("数据库连接失败")
             user = self.db.get_by_id('t_user', 'user_id', user_id)
             self.db.close_database()
             print(f"查询到用户: {user}")
             if not user:
+<<<<<<< HEAD
                 print("用户不存在")
                 return error_response("用户不存在")
             points = float(user["points"]) if user["points"] is not None else 0
@@ -43,6 +47,11 @@ class ExchangeLibrary:
             print(f"查询积分异常: {e}")
             import traceback
             traceback.print_exc()
+=======
+                return error_response("用户不存在")
+            return success_response("成功", data={"points": float(user["points"]) if user["points"] is not None else 0})
+        except Exception as e:
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             return error_response(f"查询积分失败：{str(e)}")
 
     def submit_exchange(self, user_id: str, product_id: int) -> dict:
@@ -61,10 +70,14 @@ class ExchangeLibrary:
             product_data = product["data"]
 
             # 2. 检查库存
+<<<<<<< HEAD
             stock = int(product_data['stock'])
             print(f"商品库存: {stock}")
             if stock <= 0:
                 print("库存不足")
+=======
+            if int(product_data['stock']) <= 0:
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return error_response("库存不足")
 
             # 3. 检查用户积分
@@ -75,13 +88,19 @@ class ExchangeLibrary:
             points_required = float(product_data['points_required'])
             print(f"用户积分: {user_points}, 所需积分: {points_required}")
             if user_points < points_required:
+<<<<<<< HEAD
                 print("积分不足")
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return error_response("积分不足")
 
             # 4. 开启事务
             print("开始开启事务...")
             if not self.db.open_database():
+<<<<<<< HEAD
                 print("数据库连接失败")
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return error_response("数据库连接失败")
             if not self.db.begin_transaction():
                 self.db.close_database()
@@ -125,7 +144,10 @@ class ExchangeLibrary:
 
                 print("提交事务...")
                 self.db.commit()
+<<<<<<< HEAD
                 print("事务提交成功")
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 return success_response(
                     "兑换申请提交成功",
                     data={
@@ -254,6 +276,7 @@ class ExchangeLibrary:
             count_result = self.db.execute_raw_sql(count_sql, (user_id,))
             total = count_result[0]['total'] if count_result else 0
             self.db.close_database()
+<<<<<<< HEAD
             
             # 转换数据格式匹配前端
             status_map = {0: 'pending', 1: 'completed', 2: 'cancelled'}
@@ -277,6 +300,18 @@ class ExchangeLibrary:
                 })
             
             return success_response("成功", data=formatted_records)
+=======
+            return success_response(
+                "成功",
+                data={
+                    "records": records if records else [],
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": (total + page_size - 1) // page_size if total > 0 else 0
+                }
+            )
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
         except Exception as e:
             return error_response(f"查询兑换记录失败：{str(e)}")
 

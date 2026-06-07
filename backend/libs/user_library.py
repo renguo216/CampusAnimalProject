@@ -43,6 +43,7 @@ class UserLibrary:
 
     def _raw_update(self, user_id, data_dict) -> bool:
         """内部通用更新（跳过白名单校验）"""
+<<<<<<< HEAD
         print(f"执行 _raw_update: user_id={user_id}, data_dict={data_dict}")
         if not self.db.open_database():
             print("数据库打开失败")
@@ -50,6 +51,11 @@ class UserLibrary:
         print("数据库打开成功，准备执行更新")
         success = self.db.update('t_user', 'user_id', user_id, data_dict)
         print(f"数据库更新结果: {success}")
+=======
+        if not self.db.open_database():
+            return False
+        success = self.db.update('t_user', 'user_id', user_id, data_dict)
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
         self.db.close_database()
         return success
 
@@ -74,7 +80,10 @@ class UserLibrary:
                 'volunteer_id': user.volunteer_id,
                 'admin_id': user.admin_id,
                 'level': user.level,
+<<<<<<< HEAD
                 'phone_number': user.phone_number,
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 'like_count': user.like_count,
                 'follower_count': user.follower_count,
                 'following_count': user.following_count,
@@ -142,6 +151,7 @@ class UserLibrary:
         白名单限制：只允许修改昵称、头像、手机号等基础资料
         :return: dict {"success": bool, "message": str, "data": dict or None}
         """
+<<<<<<< HEAD
         print(f"=== 更新用户信息 ===")
         print(f"user_id: {user_id}")
         print(f"原始更新数据: {update_data}")
@@ -153,10 +163,15 @@ class UserLibrary:
             return error_response("用户不存在")
 
         print(f"找到用户: {user.nickname}, is_active: {user.is_active}, 原有手机号: {user.phone_number}")
+=======
+        if not self._verify_user_validity(user_id):
+            return error_response("用户不存在或已注销")
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
 
         allowed_fields = {'nickname', 'avatarURL', 'phone_number', 'gender', 'bio', 'birthday'}
         clean_data = {k: v for k, v in update_data.items() if k in allowed_fields}
         if not clean_data:
+<<<<<<< HEAD
             print(f"没有需要更新的有效字段，原始字段: {update_data.keys()}")
             return error_response("没有需要更新的有效字段")
 
@@ -169,6 +184,15 @@ class UserLibrary:
         print("用户信息更新失败")
         return error_response("更新失败")
 
+=======
+            return error_response("没有需要更新的有效字段")
+
+        success = self._raw_update(user_id, clean_data)
+        if success:
+            return success_response("更新成功", data={"user_id": user_id})
+        return error_response("更新失败")
+
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
     def update_role(self, user_id, new_role) -> dict:
         """
         修改用户角色，自动调整关联字段
@@ -410,7 +434,10 @@ class UserLibrary:
                 'volunteer_id': user.volunteer_id,
                 'admin_id': user.admin_id,
                 'level': user.level,
+<<<<<<< HEAD
                 'phone_number': user.phone_number,
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
                 'like_count': user.like_count,
                 'follower_count': user.follower_count,
                 'following_count': user.following_count,
@@ -452,6 +479,7 @@ class UserLibrary:
             })
 
         return success_response("成功", data={"volunteers": volunteers})
+<<<<<<< HEAD
 
     def get_all_users(self, page=1, page_size=20) -> dict:
         """
@@ -496,6 +524,8 @@ class UserLibrary:
             "page_size": page_size,
             "users": users
         })
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
 
     # ========== 内部辅助方法 ==========
 

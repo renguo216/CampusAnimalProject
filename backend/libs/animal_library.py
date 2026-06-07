@@ -63,12 +63,15 @@ class AnimalLibrary:
             return error_response("绝育状态必须是 0, 1 或 2")
         if is_vaccinated not in (0, 1, 2):
             return error_response("疫苗状态必须是 0, 1 或 2")
+<<<<<<< HEAD
 
         # 处理 photo_urls - 如果是列表，转换为 JSON 字符串
         import json
         processed_photo_urls = photo_urls
         if photo_urls and isinstance(photo_urls, list):
             processed_photo_urls = json.dumps(photo_urls)
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
 
         data = {
             'name': name,

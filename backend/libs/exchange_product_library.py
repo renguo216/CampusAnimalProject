@@ -23,11 +23,15 @@ class ExchangeProductLibrary:
         """
         获取积分商品列表（分页）
         只返回已上架的商品 (status = 1)
+<<<<<<< HEAD
         转换字段格式匹配前端
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
         """
         try:
             print(f"开始查询积分商品... page={page}, page_size={page_size}")
             if not self.db.open_database():
+<<<<<<< HEAD
                 print("数据库连接失败")
                 return error_response("数据库连接失败")
             
@@ -43,6 +47,9 @@ class ExchangeProductLibrary:
             print(f"所有商品查询结果: {all_result}")
             
             # 再查询已上架的商品
+=======
+                return error_response("数据库连接失败")
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             result = self.db.get_paginated(
                 't_exchange_product',
                 page=page,
@@ -56,6 +63,7 @@ class ExchangeProductLibrary:
             self.db.close_database()
             
             if result is None:
+<<<<<<< HEAD
                 print("查询失败，结果为空")
                 return error_response("查询失败")
             
@@ -85,6 +93,11 @@ class ExchangeProductLibrary:
             print(f"查询商品列表异常: {e}")
             import traceback
             traceback.print_exc()
+=======
+                return error_response("查询失败")
+            return success_response("成功", data=result)
+        except Exception as e:
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
             return error_response(f"查询商品列表失败：{str(e)}")
 
     def get_exchange_item_by_id(self, product_id: int):

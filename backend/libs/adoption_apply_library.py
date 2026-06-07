@@ -287,6 +287,7 @@ class AdoptionApplyLibrary:
                 "page_size": page_size
             }
         )
+<<<<<<< HEAD
 
     def get_all_applications(self, page=1, page_size=20):
         """
@@ -346,6 +347,8 @@ class AdoptionApplyLibrary:
                 "page_size": page_size
             }
         )
+=======
+>>>>>>> e75cee203baac6a3459ff90901bf40335feb4706
 
     def approve_application(self, apply_id, reviewer_id, review_comment=""):
         """
