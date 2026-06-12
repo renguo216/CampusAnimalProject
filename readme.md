@@ -13,19 +13,19 @@
 - AI模块 : TensorFlow + ResNet50（动物识别）
 
 ## 项目结构
-CampusAnimalProject/
-├── backend/          # 后端代码
-│   ├── app.py        # Flask应用入口
-│   ├── api/          # RESTful API路由
-│   ├── libs/         # 业务逻辑层
-│   ├── model/        # 数据模型
-│   ├── utils/        # 工具类（数据库管理、响应封装）
-│   ├── ai_module/    # AI动物识别模块
-│   └── config/       # 配置文件
-├── database/         # 数据库脚本（建表、初始化数据）
-├── admin/            # 管理员后台页面
-├── frontend/         # 微信小程序前端
-└── docs/             # 项目文档
+- CampusAnimalProject/
+    - backend/          # 后端代码
+        - app.py        # Flask应用入口
+        - api/          # RESTful API路由
+        - libs/         # 业务逻辑层
+        - model/        # 数据模型
+        - utils/        # 工具类（数据库管理、响应封装）
+        - ai_module/    # AI动物识别模块
+        - config/       # 配置文件
+    - database/         # 数据库脚本（建表、初始化数据）
+    - admin/            # 管理员后台页面
+    - frontend/         # 微信小程序前端
+    - docs/             # 项目文档
 
 ## 核心功能
 ### 用户端功能
@@ -66,10 +66,10 @@ CampusAnimalProject/
 - Node.js（小程序开发）
 
 ### 后端启动
-cd backend
-pip install -r requirements.txt
-set PYTHONPATH=your_project_path
-python app.py
+- cd backend
+- pip install -r requirements.txt
+- set PYTHONPATH=your_project_path
+- python app.py
 
 ### 访问地址
 - API接口 : http://localhost:5000/api/v1
